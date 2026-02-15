@@ -3,6 +3,8 @@
 from unittest.mock import MagicMock
 
 import pytest
+
+fastapi = pytest.importorskip("fastapi", reason="fastapi not installed (pip install incite[api])")
 from fastapi.testclient import TestClient
 
 from incite import api as api_module
@@ -136,8 +138,11 @@ class TestRecommend:
         assert len(data["recommendations"]) == 2
         assert data["timing"]["total_ms"] == 42.0
         mock_agent.recommend.assert_called_once_with(
-            query="climate change", k=10, author_boost=1.0,
-            cursor_sentence_index=None, focus_decay=0.5,
+            query="climate change",
+            k=10,
+            author_boost=1.0,
+            cursor_sentence_index=None,
+            focus_decay=0.5,
         )
 
     def test_recommend_custom_params(self, client, mock_agent):
@@ -147,8 +152,11 @@ class TestRecommend:
         )
         assert resp.status_code == 200
         mock_agent.recommend.assert_called_once_with(
-            query="neural nets", k=5, author_boost=1.3,
-            cursor_sentence_index=None, focus_decay=0.5,
+            query="neural nets",
+            k=5,
+            author_boost=1.3,
+            cursor_sentence_index=None,
+            focus_decay=0.5,
         )
 
     def test_recommend_empty_query(self, client, mock_agent):
