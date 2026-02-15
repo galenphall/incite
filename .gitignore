@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Data (large files)
+data/raw/
+data/finetuning/
+data/finetuning_v2/
+data/processed/*.faiss
+data/processed/*.db
+data/processed/index/
+data/processed/chunks.jsonl
+data/processed/sentence_chunks.jsonl
+data/processed/chunk_index_*/
+data/processed/sentence-index-*/
+data/processed/aggregation_test_results.json
+data/processed/paragraph_baseline_report.json
+data/processed/test_set_old.jsonl
+data/processed/openalex_to_arxiv.json
+data/processed/openalex_to_arxiv_all.json
+*.npy
+*.pkl
+
+# Models (large files)
+models/
+*.bin
+*.pt
+*.onnx
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+*.key
+secrets.yaml
+
+# Node.js
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude/Swarm runtime state
+.claude-flow/
+.swarm/
+conversation.txt
+
+# Google Apps Script
+.clasp.json
+
+# Jupyter
+.ipynb_checkpoints/

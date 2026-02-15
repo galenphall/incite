@@ -1,0 +1,22 @@
+{
+	"name": "obsidian-incite",
+	"version": "0.1.0",
+	"description": "inCite citation recommendations for Obsidian",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production"
+	},
+	"keywords": ["obsidian", "citations", "academic", "writing"],
+	"license": "MIT",
+	"dependencies": {
+		"@incite/shared": "file:../shared"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "^0.20.0",
+		"obsidian": "latest",
+		"typescript": "^5.3.0"
+	}
+}

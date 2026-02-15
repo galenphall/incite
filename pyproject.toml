@@ -1,0 +1,136 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "incite"
+version = "0.1.0"
+description = "Local-first citation recommendation system"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Galen Hall" }
+]
+keywords = ["citation", "recommendation", "academic", "zotero", "embeddings"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.0",
+    "rank-bm25>=0.2.2",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+    "requests>=2.28.0",
+    "bibtexparser>=2.0.0b1",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+api = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.9",
+]
+serve = [
+    "incite[api]",
+]
+nlp = [
+    "spacy>=3.6.0",
+]
+llm = [
+    "anthropic>=0.39.0",
+]
+webapp = [
+    "streamlit>=1.28.0",
+]
+voyage = [
+    "voyageai>=0.3.0",
+]
+finetune = [
+    "datasets>=2.14.0",
+    "accelerate>=0.24.0",
+    "einops>=0.7.0",
+]
+pdf = [
+    "pymupdf>=1.23.0",
+]
+zotero = [
+    "pyzotero",
+]
+acquire = [
+    "playwright>=1.40.0",
+]
+tray = [
+    "rumps>=0.4.0",
+]
+all = [
+    "incite[dev,api,nlp,llm,webapp,voyage,finetune,acquire,tray,pdf,zotero]",
+]
+
+[project.urls]
+Homepage = "https://github.com/galenphall/incite"
+Repository = "https://github.com/galenphall/incite"
+Issues = "https://github.com/galenphall/incite/issues"
+Documentation = "https://github.com/galenphall/incite#readme"
+
+[project.scripts]
+incite = "incite.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/incite"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "data/",
+    "models/",
+    "notebooks/",
+    "editor-plugins/",
+    "docs/",
+    "scripts/",
+    "tests/",
+    "logos/",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-m 'not e2e and not slow'"
+markers = [
+    "e2e: end-to-end tests against a running cloud server (deselect with '-m \"not e2e\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["incite"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true

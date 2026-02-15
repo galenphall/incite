@@ -1,0 +1,20 @@
+{
+	"name": "google-docs-incite",
+	"version": "0.1.0",
+	"description": "inCite citation recommendations for Google Docs (sidebar add-on)",
+	"main": "dist/sidebar.js",
+	"scripts": {
+		"build": "node esbuild.config.mjs production",
+		"dev": "node esbuild.config.mjs"
+	},
+	"keywords": ["google-docs", "citations", "academic", "writing"],
+	"license": "MIT",
+	"dependencies": {
+		"@incite/shared": "file:../shared"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"esbuild": "^0.20.0",
+		"typescript": "^5.3.0"
+	}
+}

@@ -1,0 +1,451 @@
+<script>
+  // ── State ──────────────────────────────────────────────────
+
+  var state = {
+    loading: false,
+    results: [],
+    timing: null,
+    error: null,
+    settings: null,  // loaded from server on init
+    serverInfo: null  // from /health
+  };
+
+  // ── Init ───────────────────────────────────────────────────
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Disable button until bridge + server are confirmed ready
+    var btn = document.getElementById('btn-refresh');
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+
+    loadSettings(function() {
+      checkServer(function(ready) {
+        btn.disabled = false;
+        btn.textContent = 'Get Recommendations';
+      });
+    });
+
+    btn.addEventListener('click', onRefresh);
+    document.getElementById('btn-settings').addEventListener('click', onOpenSettings);
+
+    // Listen for Chrome extension hotkey trigger
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'INCITE_TRIGGER') {
+        onRefresh();
+      }
+    });
+  });
+
+  // ── Permission error detection ──────────────────────────────
+
+  /** Check if an Apps Script error is a multi-account PERMISSION_DENIED issue. */
+  function isMultiAccountError(err) {
+    if (!err || !err.message) return false;
+    var msg = err.message.toLowerCase();
+    return msg.indexOf('permission_denied') !== -1
+      || msg.indexOf('warden') !== -1
+      || msg.indexOf('transporterror') !== -1;
+  }
+
+  function loadSettings(callback) {
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        state.settings = settings;
+        if (callback) callback();
+      })
+      .withFailureHandler(function(err) {
+        if (isMultiAccountError(err)) {
+          showError(
+            'Multiple Google accounts detected. google.script.run cannot resolve ' +
+            'the correct account. Try using an Incognito window with a single account.'
+          );
+        }
+        state.settings = {
+          apiUrl: 'http://127.0.0.1:8230',
+          k: 10,
+          authorBoost: 1.0,
+          contextSentences: 6,
+          insertFormat: '({first_author}, {year})',
+          showParagraphs: true
+        };
+        if (callback) callback();
+      })
+      .getSettings();
+  }
+
+  // ── Server health check ────────────────────────────────────
+
+  function checkServer(callback) {
+    var url = state.settings.apiUrl + '/health';
+    fetchWithTimeout(url, {}, 5000)
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        state.serverInfo = data;
+        if (data.ready) {
+          showServerStatus('connected', 'Connected (' + data.corpus_size + ' papers)');
+        } else {
+          showServerStatus('loading', 'Server is loading…');
+        }
+        if (callback) callback(data.ready);
+      })
+      .catch(function(err) {
+        if (err && err.name === 'AbortError') {
+          showServerStatus('offline', 'Server not responding — run: incite serve');
+        } else {
+          showServerStatus('offline', 'Server not running — run: incite serve');
+        }
+        if (callback) callback(false);
+      });
+  }
+
+  /** Show server health indicator in the status bar with color-coded styling. */
+  function showServerStatus(level, message) {
+    var bar = document.getElementById('status-bar');
+    bar.textContent = message;
+    bar.className = 'mc-status visible mc-server-' + level;
+  }
+
+  // ── Get recommendations ────────────────────────────────────
+
+  function onRefresh() {
+    if (state.loading) return;
+    setLoading(true);
+
+    // Timeout guard: if google.script.run hangs (cold start, auth issue),
+    // reset after 15s so the sidebar isn't stuck on "Searching..." forever.
+    var timedOut = false;
+    var timeout = setTimeout(function() {
+      timedOut = true;
+      showError('Timed out reading document. Click in your doc and try again.');
+      setLoading(false);
+    }, 15000);
+
+    // Step 1: get context from the document via Apps Script
+    google.script.run
+      .withSuccessHandler(function(context) {
+        clearTimeout(timeout);
+        if (timedOut) return;
+        if (context.error) {
+          showError(context.error);
+          setLoading(false);
+          return;
+        }
+        // Step 2: call local inCite API
+        fetchRecommendations(context);
+      })
+      .withFailureHandler(function(err) {
+        clearTimeout(timeout);
+        if (timedOut) return;
+        if (isMultiAccountError(err)) {
+          showError(
+            'Multiple Google accounts detected. google.script.run cannot resolve ' +
+            'the correct account. Try using an Incognito window with a single account.'
+          );
+        } else {
+          showError('Could not read document: ' + err.message);
+        }
+        setLoading(false);
+      })
+      .getContextAtCursor();
+  }
+
+  /** Wrapper around fetch() that aborts after timeoutMs milliseconds. */
+  function fetchWithTimeout(url, options, timeoutMs) {
+    var controller = new AbortController();
+    var opts = Object.assign({}, options, { signal: controller.signal });
+    var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+    return fetch(url, opts).finally(function() { clearTimeout(timer); });
+  }
+
+  function fetchRecommendations(context) {
+    var url = state.settings.apiUrl + '/recommend';
+    var body = {
+      query: context.text,
+      k: state.settings.k,
+      author_boost: state.settings.authorBoost
+    };
+    if (context.cursorSentenceIndex !== undefined) {
+      body.cursor_sentence_index = context.cursorSentenceIndex;
+    }
+
+    fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }, 5000)
+    .then(function(resp) {
+      if (!resp.ok) throw new Error('Server returned ' + resp.status);
+      return resp.json();
+    })
+    .then(function(data) {
+      state.results = data.recommendations || [];
+      state.timing = data.timing || null;
+      state.error = null;
+      setLoading(false);
+      renderResults();
+    })
+    .catch(function(err) {
+      if (err && err.name === 'AbortError') {
+        showError(
+          'Request timed out. Is the inCite server running? ' +
+          'Start with: incite serve'
+        );
+      } else {
+        showError(
+          'Could not reach inCite server at ' + state.settings.apiUrl + '. ' +
+          'Is "incite serve" running? (' + err.message + ')'
+        );
+      }
+      setLoading(false);
+    });
+  }
+
+  // ── Insert citation ────────────────────────────────────────
+
+  function onInsert(rec) {
+    var firstAuthor = 'Unknown';
+    if (rec.authors && rec.authors.length > 0) {
+      var parts = rec.authors[0].trim().split(/\s+/);
+      firstAuthor = parts[parts.length - 1];
+      if (rec.authors.length > 1) {
+        firstAuthor += ' et al.';
+      }
+    }
+
+    var citation = state.settings.insertFormat
+      .replace('{first_author}', firstAuthor)
+      .replace('{year}', rec.year || 'n.d.')
+      .replace('{paper_id}', rec.paper_id || '')
+      .replace('{bibtex_key}', rec.bibtex_key || rec.paper_id || '')
+      .replace('{title}', rec.title || '');
+
+    google.script.run
+      .withSuccessHandler(function() {
+        // Brief visual feedback
+        showStatus('Inserted: ' + citation);
+        setTimeout(function() { showStatus(''); }, 2000);
+      })
+      .withFailureHandler(function(err) {
+        if (isMultiAccountError(err)) {
+          showError(
+            'Multiple Google accounts detected. google.script.run cannot resolve ' +
+            'the correct account. Try using an Incognito window with a single account.'
+          );
+        } else {
+          showError('Could not insert citation: ' + err.message);
+        }
+      })
+      .insertCitation(citation);
+  }
+
+  // ── Settings ───────────────────────────────────────────────
+
+  function onOpenSettings() {
+    google.script.run.showSettings();
+  }
+
+  // ── Rendering ──────────────────────────────────────────────
+
+  function setLoading(on) {
+    state.loading = on;
+    var btn = document.getElementById('btn-refresh');
+    btn.disabled = on;
+    btn.textContent = on ? 'Searching…' : 'Get Recommendations';
+
+    if (on) {
+      var container = document.getElementById('results-container');
+      container.innerHTML =
+        '<div class="mc-state">' +
+          '<div class="mc-spinner"></div>' +
+          '<div>Searching for citations…</div>' +
+        '</div>';
+    }
+  }
+
+  function showError(message) {
+    state.error = message;
+    state.results = [];
+    var container = document.getElementById('results-container');
+    container.innerHTML = '<div class="mc-error">' + escapeHtml(message) + '</div>';
+    document.getElementById('timing-bar').style.display = 'none';
+  }
+
+  function showStatus(message) {
+    var bar = document.getElementById('status-bar');
+    if (message) {
+      bar.textContent = message;
+      bar.className = 'mc-status visible';
+    } else {
+      bar.className = 'mc-status';
+    }
+  }
+
+  function renderResults() {
+    var container = document.getElementById('results-container');
+    container.innerHTML = '';
+
+    if (state.results.length === 0) {
+      container.innerHTML =
+        '<div class="mc-state">' +
+          '<div class="mc-state-icon">&#x1F50D;</div>' +
+          '<div>No results. Try placing your cursor in a paragraph with more context.</div>' +
+        '</div>';
+      document.getElementById('timing-bar').style.display = 'none';
+      return;
+    }
+
+    var showParagraphs = state.settings.showParagraphs;
+
+    for (var i = 0; i < state.results.length; i++) {
+      var rec = state.results[i];
+      var card = document.createElement('div');
+      card.className = 'mc-result';
+
+      // Header: rank + confidence
+      var header = document.createElement('div');
+      header.className = 'mc-result-header';
+
+      var rank = document.createElement('span');
+      rank.className = 'mc-rank';
+      rank.textContent = rec.rank + '.';
+      header.appendChild(rank);
+
+      var conf = rec.confidence || 0;
+      var confBadge = document.createElement('span');
+      confBadge.className = 'mc-confidence ' +
+        (conf >= 0.55 ? 'mc-confidence-high' :
+         conf >= 0.35 ? 'mc-confidence-mid' : 'mc-confidence-low');
+      confBadge.textContent = conf.toFixed(2);
+      confBadge.title = 'Confidence: ' + conf.toFixed(3);
+      header.appendChild(confBadge);
+
+      card.appendChild(header);
+
+      // Title
+      var title = document.createElement('div');
+      title.className = 'mc-title';
+      title.textContent = rec.title || 'Untitled';
+      card.appendChild(title);
+
+      // Authors + year
+      if (rec.authors || rec.year) {
+        var meta = document.createElement('div');
+        meta.className = 'mc-meta';
+        var metaParts = [];
+        if (rec.authors && rec.authors.length > 0) {
+          var names = rec.authors.slice(0, 3).join(', ');
+          if (rec.authors.length > 3) names += ' et al.';
+          metaParts.push(names);
+        }
+        if (rec.year) metaParts.push('(' + rec.year + ')');
+        meta.textContent = metaParts.join(' ');
+        card.appendChild(meta);
+      }
+
+      // Matched paragraph evidence
+      if (showParagraphs) {
+        if (rec.matched_paragraphs && rec.matched_paragraphs.length) {
+          rec.matched_paragraphs.forEach(function(snippet, idx) {
+            var para = document.createElement('div');
+            para.className = idx === 0 ? 'mc-paragraph' : 'mc-paragraph mc-paragraph-secondary';
+            if (snippet.score != null) {
+              var badge = document.createElement('span');
+              badge.className = 'mc-evidence-score';
+              badge.textContent = Math.round(snippet.score * 100) + '%';
+              para.appendChild(badge);
+            }
+            renderHighlightedText(snippet.text, para, 350);
+            card.appendChild(para);
+          });
+        } else if (rec.matched_paragraph) {
+          var para = document.createElement('div');
+          para.className = 'mc-paragraph';
+          renderHighlightedText(rec.matched_paragraph, para, 350);
+          card.appendChild(para);
+        }
+      }
+
+      // Insert button
+      var actions = document.createElement('div');
+      actions.className = 'mc-actions';
+      var btn = document.createElement('button');
+      btn.className = 'mc-insert-btn';
+      btn.textContent = '+ Insert';
+      btn.setAttribute('data-index', i);
+      btn.addEventListener('click', (function(r) {
+        return function() { onInsert(r); };
+      })(rec));
+      actions.appendChild(btn);
+      card.appendChild(actions);
+
+      container.appendChild(card);
+    }
+
+    // Timing footer
+    if (state.timing) {
+      var timingBar = document.getElementById('timing-bar');
+      timingBar.textContent = state.timing.total_ms + ' ms';
+      timingBar.style.display = 'block';
+    }
+  }
+
+  /**
+   * Render text with **bold** markers converted to <strong> elements.
+   * Truncates around the highlighted portion. Ported from Obsidian plugin.
+   */
+  function renderHighlightedText(text, container, maxLength) {
+    var startBold = text.indexOf('**');
+    var endBold = text.indexOf('**', startBold + 2);
+
+    // No valid highlight — just truncate
+    if (startBold === -1 || endBold === -1) {
+      var truncated = text.length > maxLength;
+      container.textContent = truncated ? text.slice(0, maxLength) + '…' : text;
+      return;
+    }
+
+    // Window around the highlight
+    var highlightEnd = endBold + 2;
+    var highlightLength = highlightEnd - startBold;
+    var available = maxLength - highlightLength;
+    var ctxBefore = Math.floor(available * 0.3);
+    var ctxAfter = available - ctxBefore;
+
+    var sliceStart = Math.max(0, startBold - ctxBefore);
+    var sliceEnd = Math.min(text.length, highlightEnd + ctxAfter);
+    var display = text.slice(sliceStart, sliceEnd);
+
+    var prefixEllipsis = sliceStart > 0;
+    var suffixEllipsis = sliceEnd < text.length;
+
+    if (prefixEllipsis) {
+      var spaceIdx = display.indexOf(' ');
+      if (spaceIdx > 0 && spaceIdx < 20) {
+        display = display.slice(spaceIdx + 1);
+      }
+      display = '…' + display;
+    }
+    if (suffixEllipsis) {
+      display = display + '…';
+    }
+
+    // Split on **text** and render
+    var parts = display.split(/(\*\*.+?\*\*)/g);
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (part.indexOf('**') === 0 && part.lastIndexOf('**') === part.length - 2) {
+        var strong = document.createElement('strong');
+        strong.textContent = part.slice(2, -2);
+        container.appendChild(strong);
+      } else if (part) {
+        container.appendChild(document.createTextNode(part));
+      }
+    }
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+</script>

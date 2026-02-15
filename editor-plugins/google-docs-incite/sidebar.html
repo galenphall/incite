@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>inCite</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; padding: 12px; color: #333; }
+  h2 { font-size: 16px; margin-bottom: 8px; }
+
+  .status { padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-bottom: 12px; }
+  .status.connected { background: #e8f5e9; color: #2e7d32; }
+  .status.loading { background: #fff3e0; color: #e65100; }
+  .status.offline { background: #ffebee; color: #c62828; }
+
+  textarea { width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; font-size: 13px; margin-bottom: 8px; }
+  button { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  #recommend-btn { background: #1a73e8; color: white; width: 100%; margin-bottom: 12px; }
+  #recommend-btn:hover { background: #1557b0; }
+
+  .settings { margin-bottom: 12px; }
+  .settings label { font-size: 11px; color: #666; }
+  .settings input { width: 100%; padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; }
+
+  .recommendation { padding: 8px; border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 6px; }
+  .rec-title { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .rec-meta { font-size: 11px; color: #666; margin-bottom: 4px; }
+  .rec-paragraph { font-size: 11px; color: #555; background: #f5f5f5; padding: 4px 6px; border-radius: 3px; margin-bottom: 4px; }
+  .copy-btn { background: #f1f3f4; color: #333; font-size: 11px; padding: 2px 8px; }
+  .copy-btn:hover { background: #e0e0e0; }
+
+  .hint { color: #999; font-style: italic; }
+  .error { color: #c62828; }
+  .loading { color: #666; }
+</style>
+</head>
+<body>
+  <h2>inCite</h2>
+  <div id="status" class="status offline">Checking server...</div>
+
+  <div class="settings">
+    <label for="api-url">Server URL</label>
+    <input id="api-url" type="text" value="http://127.0.0.1:8230">
+  </div>
+
+  <textarea id="query" placeholder="Paste the citation context from your document here..."></textarea>
+  <button id="recommend-btn">Get Recommendations</button>
+
+  <div id="results">
+    <p class="hint">Paste text around your citation and click Get Recommendations.</p>
+  </div>
+
+  <script src="dist/sidebar.js"></script>
+</body>
+</html>

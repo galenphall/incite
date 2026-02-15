@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="panel.css">
+  <title>InCite</title>
+</head>
+<body>
+  <header id="header">
+    <div class="header-left">
+      <img src="../icons/logofulllight.svg" alt="InCite" class="logo-wordmark logo-light">
+      <img src="../icons/logofulldark.svg" alt="InCite" class="logo-wordmark logo-dark">
+    </div>
+    <div class="header-right">
+      <span id="status-dot" class="status-dot"></span>
+      <a href="../options/options.html" target="_blank" class="settings-link" title="Settings">&#9881;</a>
+    </div>
+  </header>
+
+  <div id="action-bar">
+    <button id="btn-recommend" class="btn-primary">Get Recommendations</button>
+    <span class="hint">or press <kbd>Alt+Shift+M</kbd></span>
+  </div>
+
+  <div id="manual-input" class="manual-input collapsed">
+    <button id="btn-toggle-manual" class="manual-toggle" type="button">
+      Paste text manually
+      <span class="toggle-arrow">&#9662;</span>
+    </button>
+    <div class="manual-body">
+      <textarea id="manual-text" placeholder="Paste or type your text here..." rows="4"></textarea>
+      <button id="btn-manual-submit" class="btn-primary btn-manual-submit">Get Recommendations</button>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="empty-state">
+      <p>Select text in your document, then click <strong>Get Recommendations</strong>.</p>
+      <p class="hint">Works with Google Docs and Overleaf.</p>
+    </div>
+  </div>
+
+  <script src="../dist/panel.js"></script>
+</body>
+</html>

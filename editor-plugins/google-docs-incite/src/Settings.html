@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      margin: 0;
+      padding: 16px;
+    }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #5f6368;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 18px 0 8px;
+    }
+    h3:first-child { margin-top: 0; }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 3px;
+    }
+
+    .field-desc {
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 1px #1a73e8;
+    }
+
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .checkbox-field input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid #dadce0;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 4px;
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-save {
+      background: #1a73e8;
+      color: #fff;
+    }
+    .btn-save:hover { background: #1765cc; }
+    .btn-cancel {
+      background: #f1f3f4;
+      color: #3c4043;
+    }
+    .btn-cancel:hover { background: #e8eaed; }
+
+    .toast {
+      display: none;
+      background: #137333;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-top: 8px;
+      text-align: center;
+    }
+    .toast.visible { display: block; }
+  </style>
+</head>
+<body>
+
+  <h3>Server</h3>
+
+  <div class="field">
+    <label for="apiUrl">API URL</label>
+    <div class="field-desc">URL of the inCite server (run <code>incite serve</code>)</div>
+    <input type="text" id="apiUrl" placeholder="http://127.0.0.1:8230">
+  </div>
+
+  <h3>Retrieval</h3>
+
+  <div class="field">
+    <label for="k">Number of results</label>
+    <div class="field-desc">How many recommendations to show (1-50)</div>
+    <input type="number" id="k" min="1" max="50" step="1">
+  </div>
+
+  <div class="field">
+    <label for="authorBoost">Author boost</label>
+    <div class="field-desc">Boost papers whose authors appear in context (1.0 = no boost)</div>
+    <input type="number" id="authorBoost" min="0" max="5" step="0.1">
+  </div>
+
+  <div class="field">
+    <label for="contextSentences">Context sentences</label>
+    <div class="field-desc">Total sentences to extract around cursor (2-20)</div>
+    <input type="number" id="contextSentences" min="2" max="20" step="1">
+  </div>
+
+  <h3>Citation format</h3>
+
+  <div class="field">
+    <label for="insertFormat">Insert format</label>
+    <div class="field-desc">Placeholders: {first_author}, {year}, {paper_id}, {bibtex_key}, {title}</div>
+    <input type="text" id="insertFormat" placeholder="({first_author}, {year})">
+  </div>
+
+  <h3>Display</h3>
+
+  <div class="checkbox-field">
+    <input type="checkbox" id="showParagraphs">
+    <label for="showParagraphs">Show matched paragraphs</label>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-cancel" onclick="google.script.host.close()">Cancel</button>
+    <button class="btn btn-save" id="btn-save">Save</button>
+  </div>
+
+  <div id="toast" class="toast">Settings saved</div>
+
+  <script>
+    // Load current settings into form
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        document.getElementById('apiUrl').value = settings.apiUrl;
+        document.getElementById('k').value = settings.k;
+        document.getElementById('authorBoost').value = settings.authorBoost;
+        document.getElementById('contextSentences').value = settings.contextSentences;
+        document.getElementById('insertFormat').value = settings.insertFormat;
+        document.getElementById('showParagraphs').checked = settings.showParagraphs;
+      })
+      .getSettings();
+
+    // Save settings
+    document.getElementById('btn-save').addEventListener('click', function() {
+      var settings = {
+        apiUrl: document.getElementById('apiUrl').value.trim() || 'http://127.0.0.1:8230',
+        k: parseInt(document.getElementById('k').value, 10) || 10,
+        authorBoost: parseFloat(document.getElementById('authorBoost').value) || 1.0,
+        contextSentences: parseInt(document.getElementById('contextSentences').value, 10) || 6,
+        insertFormat: document.getElementById('insertFormat').value || '({first_author}, {year})',
+        showParagraphs: document.getElementById('showParagraphs').checked
+      };
+
+      // Clamp values
+      settings.k = Math.max(1, Math.min(50, settings.k));
+      settings.authorBoost = Math.max(0, Math.min(5, settings.authorBoost));
+      settings.contextSentences = Math.max(2, Math.min(20, settings.contextSentences));
+
+      google.script.run
+        .withSuccessHandler(function() {
+          var toast = document.getElementById('toast');
+          toast.className = 'toast visible';
+          setTimeout(function() {
+            toast.className = 'toast';
+            google.script.host.close();
+          }, 800);
+        })
+        .withFailureHandler(function(err) {
+          alert('Failed to save: ' + err.message);
+        })
+        .saveSettings(settings);
+    });
+  </script>
+</body>
+</html>

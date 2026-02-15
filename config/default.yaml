@@ -1,0 +1,43 @@
+# MayaCite Configuration
+
+corpus:
+  source: zotero          # zotero, semantic_scholar, or jsonl
+  pdf_extraction: pymupdf # pymupdf, grobid, or none
+  chunk_size: 512
+  chunk_overlap: 50
+
+embeddings:
+  model: allenai/specter2
+  batch_size: 32
+  device: cpu             # cpu or cuda
+
+retrieval:
+  method: hybrid          # neural, bm25, or hybrid
+  fusion: rrf             # rrf or weighted
+  top_k: 50
+  neural_weight: 0.7
+  bm25_weight: 0.3
+  rrf_k: 60
+
+reranking:
+  enabled: true
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 10
+  author_boost: 0.2
+  year_boost: 0.1
+
+evaluation:
+  metrics:
+    - recall@1
+    - recall@5
+    - recall@10
+    - recall@20
+    - recall@50
+    - mrr
+    - ndcg@10
+
+# Paths
+data_dir: data
+corpus_path: data/processed/corpus.jsonl
+index_path: data/processed/index
+test_set_path: data/processed/test_set.jsonl

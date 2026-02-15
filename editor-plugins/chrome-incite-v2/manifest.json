@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "InCite — Citation Recommendations",
+  "version": "0.1.0",
+  "description": "AI-powered citation recommendations for Google Docs and Overleaf",
+  "commands": {
+    "trigger-recommendations": {
+      "suggested_key": {
+        "default": "Alt+Shift+M",
+        "mac": "Alt+Shift+M"
+      },
+      "description": "Get citation recommendations"
+    }
+  },
+  "background": {
+    "service_worker": "dist/service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://docs.google.com/document/*"],
+      "js": ["dist/googledocs.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.overleaf.com/project/*"],
+      "js": ["dist/overleaf-isolated.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": ["https://www.overleaf.com/project/*"],
+      "js": ["dist/overleaf-main.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ],
+  "options_page": "options/options.html",
+  "permissions": ["storage", "sidePanel", "activeTab", "clipboardWrite", "clipboardRead"],
+  "host_permissions": [
+    "http://localhost:8230/*",
+    "https://inciteref.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

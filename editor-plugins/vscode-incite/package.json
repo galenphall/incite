@@ -1,0 +1,134 @@
+{
+	"name": "vscode-incite",
+	"displayName": "inCite",
+	"description": "Citation recommendations from your Zotero library as you write",
+	"version": "0.1.0",
+	"publisher": "incite",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"categories": ["Other"],
+	"keywords": ["citations", "academic", "writing", "zotero", "latex", "bibtex"],
+	"activationEvents": [],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "incite",
+					"title": "inCite",
+					"icon": "$(book)"
+				}
+			]
+		},
+		"views": {
+			"incite": [
+				{
+					"type": "webview",
+					"id": "incite.sidebar",
+					"name": "Recommendations"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "incite.recommendAtCursor",
+				"title": "inCite: Get Citation Recommendations"
+			},
+			{
+				"command": "incite.openSidebar",
+				"title": "inCite: Open Sidebar"
+			},
+			{
+				"command": "incite.toggleAutoDetect",
+				"title": "inCite: Toggle Auto-Detection"
+			}
+		],
+		"keybindings": [
+			{
+				"command": "incite.recommendAtCursor",
+				"key": "ctrl+shift+c",
+				"mac": "cmd+shift+c",
+				"when": "editorTextFocus"
+			}
+		],
+		"configuration": {
+			"title": "inCite",
+			"properties": {
+				"incite.apiUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:8230",
+					"description": "URL of the inCite server (run 'incite serve')"
+				},
+				"incite.k": {
+					"type": "number",
+					"default": 10,
+					"minimum": 1,
+					"maximum": 50,
+					"description": "Number of recommendations to show"
+				},
+				"incite.authorBoost": {
+					"type": "number",
+					"default": 1.0,
+					"minimum": 0,
+					"maximum": 5,
+					"description": "Boost papers whose authors appear in context (1.0 = no boost, 1.2 = 20% boost)"
+				},
+				"incite.contextSentences": {
+					"type": "number",
+					"default": 6,
+					"minimum": 2,
+					"maximum": 20,
+					"description": "Total sentences to extract around cursor"
+				},
+				"incite.insertFormat": {
+					"type": "string",
+					"default": "\\cite{${bibtex_key}}",
+					"description": "Format for inserted citations. Placeholders: ${bibtex_key}, ${paper_id}, ${first_author}, ${year}, ${title}"
+				},
+				"incite.autoDetectEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Automatically trigger recommendations when a citation marker is detected"
+				},
+				"incite.debounceMs": {
+					"type": "number",
+					"default": 800,
+					"minimum": 100,
+					"maximum": 5000,
+					"description": "Milliseconds to wait after typing before triggering auto-detection"
+				},
+				"incite.showParagraphs": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show matched paragraph evidence when available"
+				},
+				"incite.citationPatterns": {
+					"type": "array",
+					"items": { "type": "string" },
+					"default": [
+						"\\[@[^\\]]*\\]",
+						"\\[cite\\]",
+						"\\\\cite\\{[^}]*\\}"
+					],
+					"description": "Regex patterns that trigger auto-detection on the current line"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"build": "node esbuild.config.mjs production",
+		"dev": "node esbuild.config.mjs",
+		"watch": "node esbuild.config.mjs --watch"
+	},
+	"dependencies": {
+		"@incite/shared": "file:../shared"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"@types/vscode": "^1.85.0",
+		"esbuild": "^0.20.0",
+		"typescript": "^5.3.0"
+	}
+}
