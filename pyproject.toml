@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "incite"
+name = "incite-app"
 version = "0.1.0"
 description = "Local-first citation recommendation system"
 readme = "README.md"
