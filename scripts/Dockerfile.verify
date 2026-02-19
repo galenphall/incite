@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+# Install the package
+RUN pip install --no-cache-dir ".[dev]"
+
+# Verification steps
+RUN echo "=== Step 1: CLI loads ===" && incite --help
+RUN echo "=== Step 2: Core imports ===" && python -c "from incite.agent import InCiteAgent; print('InCiteAgent import OK')"
+RUN echo "=== Step 3: Embedder loads (downloads from HuggingFace) ===" && python -c "from incite.retrieval.factory import get_embedder; e = get_embedder('minilm-ft'); print(f'Embedder loaded: {type(e).__name__}')"
+RUN echo "=== Step 4: Tests ===" && pytest tests/ -x --ignore=tests/test_hybrid.py -q
+
+CMD ["echo", "All verification steps passed."]

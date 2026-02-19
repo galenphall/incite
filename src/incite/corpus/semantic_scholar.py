@@ -151,7 +151,7 @@ class SemanticScholarClient:
         """
         self._rate_limit()
 
-        fields = "paperId,title,abstract,authors,year,externalIds"
+        fields = "paperId,title,abstract,authors,year,externalIds,openAccessPdf,venue"
         url = f"{self.BASE_URL}/paper/{paper_id}/references?fields={fields}&limit={limit}"
 
         papers = []
@@ -159,10 +159,13 @@ class SemanticScholarClient:
             response = requests.get(url, headers=self._headers())
             response.raise_for_status()
             data = response.json()
+            if not data:
+                return papers
 
-            for item in data.get("data", []):
+            for item in data.get("data") or []:
                 cited = item.get("citedPaper", {})
                 if cited.get("paperId") and cited.get("title"):
+                    oa_pdf = cited.get("openAccessPdf") or {}
                     papers.append(
                         Paper(
                             id=cited["paperId"],
@@ -171,6 +174,8 @@ class SemanticScholarClient:
                             authors=[a.get("name", "") for a in cited.get("authors", [])],
                             year=cited.get("year"),
                             doi=cited.get("externalIds", {}).get("DOI"),
+                            pdf_url=oa_pdf.get("url"),
+                            journal=cited.get("venue") or None,
                         )
                     )
         except requests.RequestException as e:
@@ -190,7 +195,7 @@ class SemanticScholarClient:
         """
         self._rate_limit()
 
-        fields = "paperId,title,abstract,authors,year,externalIds"
+        fields = "paperId,title,abstract,authors,year,externalIds,openAccessPdf,venue"
         url = f"{self.BASE_URL}/paper/{paper_id}/citations?fields={fields}&limit={limit}"
 
         papers = []
@@ -198,10 +203,13 @@ class SemanticScholarClient:
             response = requests.get(url, headers=self._headers())
             response.raise_for_status()
             data = response.json()
+            if not data:
+                return papers
 
-            for item in data.get("data", []):
+            for item in data.get("data") or []:
                 citing = item.get("citingPaper", {})
                 if citing.get("paperId") and citing.get("title"):
+                    oa_pdf = citing.get("openAccessPdf") or {}
                     papers.append(
                         Paper(
                             id=citing["paperId"],
@@ -210,9 +218,176 @@ class SemanticScholarClient:
                             authors=[a.get("name", "") for a in citing.get("authors", [])],
                             year=citing.get("year"),
                             doi=citing.get("externalIds", {}).get("DOI"),
+                            pdf_url=oa_pdf.get("url"),
+                            journal=citing.get("venue") or None,
                         )
                     )
         except requests.RequestException as e:
             logger.warning("Error fetching citations: %s", e)
 
         return papers
+
+    def get_recommendations(self, paper_id: str, limit: int = 100) -> list[Paper]:
+        """Get semantically similar papers via the S2 Recommendations API.
+
+        Args:
+            paper_id: Semantic Scholar paper ID
+            limit: Maximum number of recommendations
+
+        Returns:
+            List of recommended Paper objects
+        """
+        self._rate_limit()
+
+        url = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}"
+        fields = "paperId,title,authors,year,externalIds,abstract,citationCount,openAccessPdf,venue"
+
+        papers = []
+        try:
+            response = requests.get(
+                url,
+                params={"fields": fields, "limit": limit},
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("recommendedPapers") or []:
+                pid = item.get("paperId")
+                title = item.get("title")
+                if not pid or not title:
+                    continue
+                oa_pdf = item.get("openAccessPdf") or {}
+                papers.append(
+                    Paper(
+                        id=pid,
+                        title=title,
+                        abstract=item.get("abstract", "") or "",
+                        authors=[a.get("name", "") for a in item.get("authors", [])],
+                        year=item.get("year"),
+                        doi=item.get("externalIds", {}).get("DOI"),
+                        pdf_url=oa_pdf.get("url"),
+                        journal=item.get("venue") or None,
+                    )
+                )
+        except requests.RequestException as e:
+            logger.warning("Error fetching S2 recommendations for %s: %s", paper_id, e)
+
+        return papers[:limit]
+
+    def get_recommendations_batch(
+        self,
+        positive_ids: list[str],
+        negative_ids: list[str] | None = None,
+        limit: int = 500,
+    ) -> list[Paper]:
+        """Multi-paper recommendations via the S2 Recommendations API.
+
+        Uses the POST endpoint which considers all positive papers together
+        for better relevance than per-paper calls.
+
+        Args:
+            positive_ids: S2 paper IDs to recommend from (max 100)
+            negative_ids: Optional S2 paper IDs to avoid recommending
+            limit: Maximum number of recommendations
+
+        Returns:
+            List of recommended Paper objects, ranked by relevance
+        """
+        self._rate_limit()
+
+        url = "https://api.semanticscholar.org/recommendations/v1/papers/"
+        fields = "paperId,title,authors,year,externalIds,abstract,citationCount,openAccessPdf,venue"
+
+        body: dict = {"positivePaperIds": positive_ids[:100]}
+        if negative_ids:
+            body["negativePaperIds"] = negative_ids[:100]
+
+        papers = []
+        try:
+            response = requests.post(
+                url,
+                params={"fields": fields, "limit": limit},
+                headers=self._headers(),
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("recommendedPapers") or []:
+                pid = item.get("paperId")
+                title = item.get("title")
+                if not pid or not title:
+                    continue
+                oa_pdf = item.get("openAccessPdf") or {}
+                papers.append(
+                    Paper(
+                        id=pid,
+                        title=title,
+                        abstract=item.get("abstract", "") or "",
+                        authors=[a.get("name", "") for a in item.get("authors", [])],
+                        year=item.get("year"),
+                        doi=item.get("externalIds", {}).get("DOI"),
+                        pdf_url=oa_pdf.get("url"),
+                        journal=item.get("venue") or None,
+                    )
+                )
+        except requests.RequestException as e:
+            logger.warning("Error fetching S2 batch recommendations: %s", e)
+
+        return papers[:limit]
+
+    def get_papers_batch(self, paper_ids: list[str], batch_size: int = 500) -> dict[str, Paper]:
+        """Fetch multiple papers by ID using the batch endpoint.
+
+        Uses POST /paper/batch for efficient bulk lookups (up to 500 per request).
+
+        Args:
+            paper_ids: List of paper IDs (e.g., "DOI:10.1234/xxx", S2 IDs, etc.)
+            batch_size: Max IDs per request (S2 limit is 500)
+
+        Returns:
+            Dict mapping input ID to Paper object (only successful lookups included)
+        """
+        results: dict[str, Paper] = {}
+
+        for i in range(0, len(paper_ids), batch_size):
+            batch = paper_ids[i : i + batch_size]
+            self._rate_limit()
+
+            url = f"{self.BASE_URL}/paper/batch"
+            fields = "paperId,title,abstract,authors,year,externalIds,openAccessPdf,venue"
+
+            try:
+                response = requests.post(
+                    url,
+                    headers=self._headers(),
+                    params={"fields": fields},
+                    json={"ids": batch},
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                for item, input_id in zip(data, batch):
+                    if item is None:
+                        continue
+                    if not item.get("title"):
+                        continue
+                    abstract = item.get("abstract") or ""
+                    if not abstract:
+                        continue
+                    oa_pdf = item.get("openAccessPdf") or {}
+                    results[input_id] = Paper(
+                        id=item["paperId"],
+                        title=item["title"],
+                        abstract=abstract,
+                        authors=[a.get("name", "") for a in item.get("authors", [])],
+                        year=item.get("year"),
+                        doi=item.get("externalIds", {}).get("DOI"),
+                        pdf_url=oa_pdf.get("url"),
+                        journal=item.get("venue") or None,
+                    )
+            except requests.RequestException as e:
+                logger.warning("Error in S2 batch fetch: %s", e)
+
+        return results

@@ -1,108 +1,162 @@
 <style>
-  /* ── Base ─────────────────────────────────────────────────── */
-  * { box-sizing: border-box; }
+  /* ── InCite Design Tokens (matching Chrome Extension v2) ─── */
+  :root {
+    --ink:        #1a1a1e;
+    --ink-soft:   #2a2a2f;
+    --ink-muted:  #4a4a52;
+    --graphite:   #6b6b74;
+    --slate:      #8e8e97;
+    --silver:     #b8b8bf;
+    --fog:        #dcdce0;
+    --paper:      #f0efe9;
+    --paper-warm: #f5f4ed;
+    --cream:      #faf9f3;
 
-  body {
-    font-family: 'Google Sans', Roboto, Arial, sans-serif;
-    font-size: 13px;
-    color: #202124;
-    margin: 0;
-    padding: 0;
-    background: #fff;
+    --oxblood:       #8b2e2e;
+    --oxblood-light: #a83c3c;
+    --oxblood-faint: #f2e8e8;
+    --oxblood-muted: #c47070;
+
+    --success: #3a6b4a;
+    --warning: #8b6b2e;
+    --error:   #8b2e2e;
+
+    --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --font-body:    'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono:    'IBM Plex Mono', 'SF Mono', monospace;
+
+    /* Semantic tokens */
+    --bg: var(--cream);
+    --fg: var(--ink);
+    --fg-muted: var(--graphite);
+    --border: var(--fog);
+    --card-bg: #ffffff;
+    --accent: var(--oxblood);
+    --accent-hover: var(--oxblood-light);
+    --evidence-bg: var(--oxblood-faint);
+    --evidence-border: var(--oxblood-muted);
+    --badge-bg: var(--paper);
+    --badge-fg: var(--ink-muted);
+    --radius: 6px;
+    --radius-sm: 3px;
   }
 
-  /* ── Header / toolbar ────────────────────────────────────── */
+  /* ── Base ─────────────────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Header ────────────────────────────────────────────────── */
   .mc-header {
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    padding: 10px 14px;
-    border-bottom: 1px solid #dadce0;
-    background: #f8f9fa;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
+    background: var(--bg);
     z-index: 10;
   }
 
-  .mc-header-logo {
-    text-align: center;
-    margin-bottom: 8px;
-  }
-
-  .mc-logo {
-    height: 24px;
-    width: auto;
-  }
-
-  .mc-header-actions {
+  .mc-header-left {
     display: flex;
-    justify-content: center;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mc-logo { height: 28px; width: auto; }
+
+  .mc-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mc-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--fg-muted);
+    flex-shrink: 0;
+  }
+  .mc-status-dot.connected { background: var(--success); }
+  .mc-status-dot.loading { background: var(--warning); }
+  .mc-status-dot.offline { background: var(--error); }
+
+  .mc-settings-link {
+    color: var(--fg-muted);
+    text-decoration: none;
+    font-size: 20px;
+    padding: 4px;
+    line-height: 1;
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+  .mc-settings-link:hover { color: var(--fg); }
+
+  /* ── Action bar ────────────────────────────────────────────── */
+  .mc-action-bar {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   .mc-btn {
+    padding: 6px 14px;
+    background: var(--accent);
+    color: var(--cream);
     border: none;
-    border-radius: 4px;
-    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    transition: background 0.15s ease;
   }
+  .mc-btn:hover { background: var(--accent-hover); }
+  .mc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .mc-btn-primary {
-    background: #1a73e8;
-    color: #fff;
-  }
-  .mc-btn-primary:hover { background: #1765cc; }
-  .mc-btn-primary:disabled {
-    background: #a8c7fa;
-    cursor: default;
-  }
-
-  .mc-btn-icon {
-    background: transparent;
-    padding: 6px;
-    border-radius: 50%;
-    line-height: 0;
-  }
-  .mc-btn-icon:hover { background: #e8eaed; }
-
-  .mc-btn-icon svg {
-    width: 18px;
-    height: 18px;
-    fill: #5f6368;
-  }
-
-  /* ── Status bar ──────────────────────────────────────────── */
+  /* ── Status bar (text detail) ──────────────────────────────── */
   .mc-status {
-    padding: 6px 14px;
+    padding: 6px 12px;
     font-size: 11px;
-    color: #5f6368;
-    border-bottom: 1px solid #dadce0;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--border);
     display: none;
   }
   .mc-status.visible { display: block; }
 
-  /* Server health indicator colors */
   .mc-server-connected {
-    color: #137333;
-    background: #e6f4ea;
+    color: var(--success);
+    background: rgba(58, 107, 74, 0.08);
   }
   .mc-server-loading {
-    color: #b06000;
-    background: #fef7e0;
+    color: var(--warning);
+    background: rgba(139, 107, 46, 0.08);
   }
   .mc-server-offline {
-    color: #c5221f;
-    background: #fce8e6;
+    color: var(--error);
+    background: var(--oxblood-faint);
   }
 
   /* ── Loading / empty / error states ──────────────────────── */
   .mc-state {
     padding: 32px 14px;
     text-align: center;
-    color: #5f6368;
+    color: var(--fg-muted);
   }
 
   .mc-state-icon {
@@ -112,10 +166,10 @@
 
   .mc-spinner {
     display: inline-block;
-    width: 28px;
-    height: 28px;
-    border: 3px solid #dadce0;
-    border-top-color: #1a73e8;
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: mc-spin 0.8s linear infinite;
     margin-bottom: 8px;
@@ -125,93 +179,104 @@
   }
 
   .mc-error {
-    color: #d93025;
-    background: #fce8e6;
-    border-radius: 4px;
-    padding: 10px 14px;
-    margin: 10px 14px;
+    color: var(--error);
+    background: var(--oxblood-faint);
+    border-left: 3px solid var(--error);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 10px 12px;
+    margin: 10px 12px;
     font-size: 12px;
     line-height: 1.5;
   }
 
-  /* ── Results list ────────────────────────────────────────── */
-  .mc-results {
-    padding: 6px 0;
-  }
-
+  /* ── Results list ──────────────────────────────────────────── */
   .mc-result {
-    padding: 10px 14px;
-    border-bottom: 1px solid #f1f3f4;
-    transition: background 0.1s;
+    padding: 10px 12px;
+    margin: 8px 12px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--card-bg);
+    transition: border-left-color 0.15s ease, box-shadow 0.15s ease;
   }
-  .mc-result:hover { background: #f8f9fa; }
+  .mc-result:hover {
+    border-left-color: var(--accent-hover);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
 
   /* Rank + confidence row */
   .mc-result-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 6px;
     margin-bottom: 4px;
   }
 
   .mc-rank {
-    font-size: 11px;
-    font-weight: 600;
-    color: #5f6368;
-    min-width: 20px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--badge-fg);
+    background: var(--badge-bg);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0.02em;
   }
 
   .mc-confidence {
+    font-family: var(--font-mono);
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     padding: 1px 6px;
-    border-radius: 10px;
-    letter-spacing: 0.3px;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0.02em;
   }
   .mc-confidence-high {
-    background: #e6f4ea;
-    color: #137333;
+    background: #e8f0ed;
+    color: #3a6b4a;
   }
   .mc-confidence-mid {
-    background: #fef7e0;
-    color: #b06000;
+    background: #f2ede4;
+    color: #8b6b2e;
   }
   .mc-confidence-low {
-    background: #f1f3f4;
-    color: #80868b;
+    background: var(--badge-bg);
+    color: var(--badge-fg);
   }
 
   /* Title */
   .mc-title {
+    font-family: var(--font-display);
+    font-weight: 400;
     font-size: 13px;
-    font-weight: 500;
     line-height: 1.35;
-    color: #202124;
-    margin-bottom: 2px;
+    color: var(--fg);
+    margin-bottom: 3px;
   }
 
   /* Authors + year */
   .mc-meta {
+    font-family: var(--font-body);
     font-size: 11px;
-    color: #5f6368;
+    font-weight: 500;
+    color: var(--fg-muted);
     margin-bottom: 4px;
   }
 
   /* Matched paragraph evidence */
   .mc-paragraph {
     font-size: 11px;
-    color: #3c4043;
-    background: #f8f9fa;
-    border-left: 3px solid #dadce0;
+    color: var(--fg);
+    border-left: 3px solid var(--evidence-border);
+    background: var(--evidence-bg);
     padding: 6px 8px;
     margin: 6px 0;
-    line-height: 1.5;
-    border-radius: 0 4px 4px 0;
+    line-height: 1.4;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .mc-paragraph strong {
-    background: #fdd663;
-    padding: 0 1px;
-    border-radius: 2px;
+    color: var(--accent);
     font-weight: 600;
   }
   .mc-paragraph-secondary {
@@ -220,38 +285,42 @@
     margin-top: 2px;
   }
   .mc-evidence-score {
+    font-family: var(--font-mono);
     font-size: 10px;
-    font-weight: 600;
-    color: #1a73e8;
+    font-weight: 500;
+    color: var(--oxblood);
     margin-right: 4px;
   }
 
   /* Actions row */
   .mc-actions {
-    margin-top: 4px;
+    margin-top: 6px;
   }
 
   .mc-insert-btn {
-    border: 1px solid #dadce0;
-    border-radius: 4px;
-    background: #fff;
-    padding: 3px 10px;
+    font-family: var(--font-body);
     font-size: 11px;
-    color: #1a73e8;
-    cursor: pointer;
     font-weight: 500;
-    transition: background 0.15s;
+    padding: 3px 10px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--cream);
+    cursor: pointer;
+    transition: background 0.15s ease;
   }
   .mc-insert-btn:hover {
-    background: #e8f0fe;
+    background: var(--accent-hover);
   }
 
-  /* ── Timing footer ───────────────────────────────────────── */
+  /* ── Timing footer ─────────────────────────────────────────── */
   .mc-timing {
-    padding: 6px 14px;
+    padding: 6px 12px;
+    font-family: var(--font-mono);
     font-size: 10px;
-    color: #80868b;
+    color: var(--fg-muted);
     text-align: right;
-    border-top: 1px solid #f1f3f4;
+    border-top: 1px solid var(--border);
+    letter-spacing: 0.02em;
   }
 </style>

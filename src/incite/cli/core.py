@@ -189,7 +189,8 @@ def _register_evaluate(subparsers):
     p.add_argument(
         "--reranker-full-text",
         action="store_true",
-        help="Pass full paper text (title+authors+year+abstract) to reranker instead of raw abstract",
+        help="Pass full paper text (title+authors+year+abstract) to reranker"
+        " instead of raw abstract",
     )
     p.add_argument(
         "--limit",
@@ -601,13 +602,13 @@ def _evaluate_cursor_weighted(
         )
 
     # Sentence splitting (same regex as InCiteAgent._split_sentences)
-    _ABBREV_RE = re.compile(
+    abbrev_re = re.compile(
         r"\b(?:Dr|Mr|Mrs|Ms|Prof|Inc|Ltd|Jr|Sr|St|vs|etc|e\.g|i\.e|al|Fig|Eq|No|Vol)\."
     )
 
     def _split_sentences(text: str) -> list[str]:
         placeholder = "\x00"
-        processed = _ABBREV_RE.sub(lambda m: re.sub(r"\.\s*", placeholder, m.group()), text)
+        processed = abbrev_re.sub(lambda m: re.sub(r"\.\s*", placeholder, m.group()), text)
         parts = re.split(r'(?<=[.!?])\s+(?=[A-Z"])', processed)
         return [s.replace(placeholder, ". ").strip() for s in parts if s.strip()]
 
@@ -880,9 +881,11 @@ def cmd_evaluate(args):
 
         blend_label = f", blend_alpha={args.blend_alpha}" if args.blend_alpha > 0 else ""
         ft_label = ", full_text" if args.reranker_full_text else ""
-        print(
-            f"Evaluating with {args.method} retrieval + {args.reranker} reranking{blend_label}{ft_label}..."
+        msg = (
+            f"Evaluating with {args.method} retrieval"
+            f" + {args.reranker} reranking{blend_label}{ft_label}..."
         )
+        print(msg)
         print(f"Initial candidates: {args.initial_k}, final k: 50")
         use_ref = not getattr(args, "no_reference_sets", False)
         result = evaluate_with_reranking(
@@ -1020,7 +1023,8 @@ def _run_evidence_metrics(args, retriever, paper_dict, eval_result):
             cache_dir = Path.home() / ".incite"
             chunk_index_path = cache_dir / f"zotero_chunks_{args.embedder}"
             if not (chunk_index_path / "index.faiss").exists():
-                return  # No chunk index — skip silently
+                print("  Skipping evidence metrics: no chunk index found")
+                return
 
             from incite.corpus.loader import load_chunks
             from incite.embeddings.chunk_store import ChunkStore
@@ -1031,7 +1035,8 @@ def _run_evidence_metrics(args, retriever, paper_dict, eval_result):
 
             chunks_jsonl = cache_dir / "zotero_chunks_paragraph.jsonl"
             if not chunks_jsonl.exists():
-                return  # No chunks — skip silently
+                print("  Skipping evidence metrics: no chunks file found")
+                return
 
             chunks = load_chunks(str(chunks_jsonl))
             chunk_dict = {c.id: c for c in chunks}
@@ -1039,12 +1044,13 @@ def _run_evidence_metrics(args, retriever, paper_dict, eval_result):
             embedder = _find_embedder(retriever)
             if embedder is None:
                 embedder = get_embedder(args.embedder)
-        except Exception:
-            return  # Skip silently on any setup error
+        except Exception as e:
+            print(f"  Skipping evidence metrics: setup error ({e})")
+            return
 
-    print(
-        f"\nEvidence quality ({len(passage_tests)} passage examples from {passage_test_path.name})..."
-    )
+    n_examples = len(passage_tests)
+    test_file = passage_test_path.name
+    print(f"\nEvidence quality ({n_examples} passage examples from {test_file})...")
 
     # Run retrieval + evidence evaluation for each passage test
     results_with_evidence = []

@@ -1,10 +1,15 @@
 """Evaluation metrics for retrieval."""
 
+from __future__ import annotations
+
 import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
+
+if TYPE_CHECKING:
+    from incite.evaluation.failure_analysis import DiagnosisResult
 
 import numpy as np
 
@@ -891,3 +896,62 @@ def paired_bootstrap_test(
     effect_size = observed_delta / pooled_std if pooled_std > 0 else 0.0
 
     return (observed_delta, p_value, effect_size)
+
+
+def evaluate_retrieval_by_intent(
+    query_results: list[QueryResult],
+    diagnoses: list["DiagnosisResult"],
+) -> dict[str, EvaluationResult]:
+    """Compute metrics broken down by citation intent.
+
+    Args:
+        query_results: Per-query evaluation results (from experiment run).
+        diagnoses: LLM diagnosis results with intent labels.
+
+    Returns:
+        Dict mapping intent label to EvaluationResult for queries with that intent.
+        Includes an "all" key with overall metrics and "unknown" for unmatched queries.
+    """
+
+    # Map context_id -> diagnosis
+    diag_by_id: dict[str, DiagnosisResult] = {d.context_id: d for d in diagnoses}
+
+    # Group query results by intent
+    by_intent: dict[str, list[QueryResult]] = defaultdict(list)
+    for qr in query_results:
+        diag = diag_by_id.get(qr.context_id)
+        intent = diag.intent if diag else "unknown"
+        by_intent[intent].append(qr)
+
+    # Also add "all" group
+    by_intent["all"] = list(query_results)
+
+    metric_keys = [
+        "recall@1",
+        "recall@5",
+        "recall@10",
+        "recall@20",
+        "recall@50",
+        "mrr",
+        "ndcg@10",
+    ]
+
+    results: dict[str, EvaluationResult] = {}
+    for intent, qrs in by_intent.items():
+        n = len(qrs)
+        if n == 0:
+            continue
+        avg = {k: sum(qr.scores.get(k, 0.0) for qr in qrs) / n for k in metric_keys}
+        results[intent] = EvaluationResult(
+            recall_at_1=avg["recall@1"],
+            recall_at_5=avg["recall@5"],
+            recall_at_10=avg["recall@10"],
+            recall_at_20=avg["recall@20"],
+            recall_at_50=avg["recall@50"],
+            mrr=avg["mrr"],
+            ndcg_at_10=avg["ndcg@10"],
+            num_queries=n,
+            per_query=qrs,
+        )
+
+    return results

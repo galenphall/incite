@@ -40,6 +40,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
@@ -59,6 +60,11 @@ llm = [
 ]
 webapp = [
     "streamlit>=1.28.0",
+    "incite[viz]",
+]
+viz = [
+    "umap-learn>=0.5.0",
+    "plotly>=5.18.0",
 ]
 voyage = [
     "voyageai>=0.3.0",
@@ -81,7 +87,7 @@ tray = [
     "rumps>=0.4.0",
 ]
 all = [
-    "incite[dev,api,nlp,llm,webapp,voyage,finetune,acquire,tray,pdf,zotero]",
+    "incite[dev,api,nlp,llm,webapp,viz,voyage,finetune,acquire,tray,pdf,zotero]",
 ]
 
 [project.urls]

@@ -1,0 +1,20 @@
+{
+	"manifest_version": 2,
+	"name": "inCite for Zotero",
+	"version": "0.1.0",
+	"description": "Citation recommendations from your own library, powered by inCite.",
+	"author": "Galen Hall",
+	"homepage_url": "https://github.com/galenphall/incite",
+	"icons": {
+		"48": "content/icons/icon48.png",
+		"96": "content/icons/icon96.png"
+	},
+	"applications": {
+		"zotero": {
+			"id": "incite@galenphall.com",
+			"update_url": "https://raw.githubusercontent.com/galenphall/incite/main/editor-plugins/zotero-incite/update.json",
+			"strict_min_version": "7.0",
+			"strict_max_version": "7.99"
+		}
+	}
+}

@@ -25,6 +25,13 @@
       });
     });
 
+    // Re-check server health every 30s so status updates if server comes online
+    // Skip health checks while a recommendation request is in flight to avoid
+    // saturating the browser's per-origin connection pool in the sandbox.
+    setInterval(function() {
+      if (!state.loading) checkServer();
+    }, 30000);
+
     btn.addEventListener('click', onRefresh);
     document.getElementById('btn-settings').addEventListener('click', onOpenSettings);
 
@@ -61,7 +68,10 @@
           );
         }
         state.settings = {
+          apiMode: 'cloud',
+          cloudUrl: 'https://inciteref.com',
           apiUrl: 'http://127.0.0.1:8230',
+          apiToken: '',
           k: 10,
           authorBoost: 1.0,
           contextSentences: 6,
@@ -73,23 +83,62 @@
       .getSettings();
   }
 
+  // ── API helpers ───────────────────────────────────────────
+
+  /** Return the base URL for the current API mode. */
+  function getBaseUrl() {
+    if (state.settings.apiMode === 'cloud') {
+      return (state.settings.cloudUrl || 'https://inciteref.com').replace(/\/+$/, '');
+    }
+    return (state.settings.apiUrl || 'http://127.0.0.1:8230').replace(/\/+$/, '');
+  }
+
+  /** Return the recommend endpoint path for the current API mode. */
+  function getRecommendPath() {
+    return state.settings.apiMode === 'cloud' ? '/api/v1/recommend' : '/recommend';
+  }
+
+  /** Return auth headers for the current API mode. */
+  function getAuthHeaders() {
+    var headers = { 'Content-Type': 'application/json' };
+    if (state.settings.apiMode === 'cloud' && state.settings.apiToken) {
+      headers['Authorization'] = 'Bearer ' + state.settings.apiToken;
+    }
+    return headers;
+  }
+
   // ── Server health check ────────────────────────────────────
 
   function checkServer(callback) {
-    var url = state.settings.apiUrl + '/health';
-    fetchWithTimeout(url, {}, 5000)
+    var base = getBaseUrl();
+    var healthPath = state.settings.apiMode === 'cloud' ? '/api/v1/health' : '/health';
+    var url = base + healthPath;
+    var headers = {};
+    if (state.settings.apiMode === 'cloud' && state.settings.apiToken) {
+      headers['Authorization'] = 'Bearer ' + state.settings.apiToken;
+    }
+    fetchWithTimeout(url, { headers: headers }, 5000)
       .then(function(resp) { return resp.json(); })
       .then(function(data) {
         state.serverInfo = data;
-        if (data.ready) {
-          showServerStatus('connected', 'Connected (' + data.corpus_size + ' papers)');
+        var label = state.settings.apiMode === 'cloud' ? 'Cloud' : 'Local';
+        // Cloud returns {status: "ready"|"processing"|"no_library", corpus_size}
+        // Local returns {status: "healthy"|"unhealthy", ready?: bool}
+        var isReady = data.status === 'ready' || data.status === 'healthy' || data.ready;
+        if (isReady) {
+          var size = data.corpus_size != null ? ' (' + data.corpus_size + ' papers)' : '';
+          showServerStatus('connected', label + size);
+        } else if (data.status === 'no_library') {
+          showServerStatus('loading', 'No library found — upload papers at inciteref.com');
         } else {
-          showServerStatus('loading', 'Server is loading…');
+          showServerStatus('loading', 'Library is processing…');
         }
-        if (callback) callback(data.ready);
+        if (callback) callback(isReady);
       })
       .catch(function(err) {
-        if (err && err.name === 'AbortError') {
+        if (state.settings.apiMode === 'cloud') {
+          showServerStatus('offline', 'Cannot reach cloud — check API token in Settings');
+        } else if (err && err.name === 'AbortError') {
           showServerStatus('offline', 'Server not responding — run: incite serve');
         } else {
           showServerStatus('offline', 'Server not running — run: incite serve');
@@ -98,8 +147,14 @@
       });
   }
 
-  /** Show server health indicator in the status bar with color-coded styling. */
+  /** Show server health indicator: update dot color + status bar text. */
   function showServerStatus(level, message) {
+    // Update status dot
+    var dot = document.getElementById('status-dot');
+    dot.className = 'mc-status-dot ' + level;
+    dot.title = message;
+
+    // Update text status bar
     var bar = document.getElementById('status-bar');
     bar.textContent = message;
     bar.className = 'mc-status visible mc-server-' + level;
@@ -158,7 +213,7 @@
   }
 
   function fetchRecommendations(context) {
-    var url = state.settings.apiUrl + '/recommend';
+    var url = getBaseUrl() + getRecommendPath();
     var body = {
       query: context.text,
       k: state.settings.k,
@@ -170,9 +225,9 @@
 
     fetchWithTimeout(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body)
-    }, 5000)
+    }, 30000)
     .then(function(resp) {
       if (!resp.ok) throw new Error('Server returned ' + resp.status);
       return resp.json();
@@ -185,16 +240,19 @@
       renderResults();
     })
     .catch(function(err) {
+      var base = getBaseUrl();
       if (err && err.name === 'AbortError') {
-        showError(
-          'Request timed out. Is the inCite server running? ' +
-          'Start with: incite serve'
-        );
+        if (state.settings.apiMode === 'cloud') {
+          showError('Request timed out reaching ' + base + '. Check your connection.');
+        } else {
+          showError('Request timed out. Is the inCite server running? Start with: incite serve');
+        }
       } else {
-        showError(
-          'Could not reach inCite server at ' + state.settings.apiUrl + '. ' +
-          'Is "incite serve" running? (' + err.message + ')'
-        );
+        if (state.settings.apiMode === 'cloud') {
+          showError('Could not reach cloud at ' + base + '. Check API token in Settings. (' + err.message + ')');
+        } else {
+          showError('Could not reach inCite server at ' + base + '. Is "incite serve" running? (' + err.message + ')');
+        }
       }
       setLoading(false);
     });

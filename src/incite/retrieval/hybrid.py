@@ -6,7 +6,12 @@ from typing import Optional, Union
 
 from incite.interfaces import Retriever
 from incite.models import Paper, RetrievalResult
-from incite.utils import apply_author_boost, compute_confidence, deduplicate_results
+from incite.utils import (
+    apply_author_boost,
+    apply_graph_boost,
+    compute_confidence,
+    deduplicate_results,
+)
 
 
 def rrf_fuse(
@@ -75,6 +80,8 @@ class HybridRetriever(Retriever):
         k: int = 10,
         papers: Optional[dict[str, Paper]] = None,
         author_boost: float = 1.2,
+        graph_metrics: Optional[dict[str, dict[str, float]]] = None,
+        doi_to_s2: Optional[dict[str, str]] = None,
         return_timing: bool = False,
         deduplicate: bool = False,
         **kwargs,
@@ -89,6 +96,9 @@ class HybridRetriever(Retriever):
                     in the query will have their scores boosted.
             author_boost: Multiplier for author match boosting (default 1.2 = 20% boost).
                           Set to 1.0 to disable boosting.
+            graph_metrics: Optional dict with "pagerank" and/or "cocitation" sub-dicts
+                           mapping S2 IDs to scores. Used for graph-based boosting.
+            doi_to_s2: Optional mapping from DOI to S2 ID, required for graph boosting.
             return_timing: If True, return (results, timing_dict)
             deduplicate: If True and papers provided, remove results with duplicate titles
 
@@ -144,6 +154,10 @@ class HybridRetriever(Retriever):
         # Apply author boosting if papers dict provided
         if papers and author_boost > 1.0:
             apply_author_boost(all_results, query, papers, author_boost)
+
+        # Apply graph-based boosting if metrics provided
+        if papers and graph_metrics and doi_to_s2:
+            apply_graph_boost(all_results, papers, graph_metrics, doi_to_s2)
 
         # Sort and build results
         sorted_ids = rrf_sort(all_results)

@@ -1,0 +1,20 @@
+{
+	"name": "zotero-incite",
+	"version": "0.1.0",
+	"description": "inCite citation recommendations for Zotero 7",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production",
+		"release": "bash build-release.sh"
+	},
+	"keywords": ["zotero", "citations", "academic", "recommendations"],
+	"license": "AGPL-3.0-or-later",
+	"dependencies": {
+		"@incite/shared": "file:../shared"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"esbuild": "^0.20.0",
+		"typescript": "^5.3.0"
+	}
+}

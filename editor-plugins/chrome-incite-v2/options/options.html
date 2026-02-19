@@ -15,26 +15,33 @@
     </h1>
 
     <section>
+      <h2>Citation Format</h2>
+      <div class="field">
+        <label for="citationStyle">Style</label>
+        <select id="citationStyle">
+          <option value="apa">APA — (Smith, 2024)</option>
+          <option value="narrative">Narrative — Smith (2024)</option>
+          <option value="mla">MLA — (Smith)</option>
+          <option value="harvard">Harvard — (Smith 2024)</option>
+          <option value="bibtex">BibTeX Key — [@key]</option>
+          <option value="latex">LaTeX — \cite{key}</option>
+          <option value="custom">Custom</option>
+        </select>
+        <span class="help">Format used when inserting citations into your document</span>
+      </div>
+      <div class="field hidden" id="custom-format-field">
+        <label for="customCitationFormat">Custom format</label>
+        <input type="text" id="customCitationFormat" placeholder="({first_author}, {year})">
+        <span class="help">Placeholders: {bibtex_key}, {first_author}, {year}, {title}</span>
+      </div>
+    </section>
+
+    <section>
       <h2>Connection</h2>
       <div class="field">
-        <label>API Mode</label>
-        <div class="radio-group">
-          <label class="radio"><input type="radio" name="apiMode" value="cloud"> Cloud (inciteref.com)</label>
-          <label class="radio"><input type="radio" name="apiMode" value="local"> Local (incite serve)</label>
-        </div>
-      </div>
-
-      <div class="field" id="cloud-fields">
-        <label for="cloudUrl">Cloud URL</label>
-        <input type="url" id="cloudUrl" placeholder="https://inciteref.com">
-        <label for="apiToken">API Token</label>
-        <input type="password" id="apiToken" placeholder="mc_...">
-        <a href="https://inciteref.com/web/account" target="_blank" class="help-link">Get a token from your account page</a>
-      </div>
-
-      <div class="field hidden" id="local-fields">
-        <label for="localUrl">Local URL</label>
-        <input type="url" id="localUrl" placeholder="http://localhost:8230">
+        <label for="apiToken">User Key</label>
+        <input type="password" id="apiToken" placeholder="Paste your key here">
+        <a href="https://inciteref.com/web/account" target="_blank" class="help-link">Required — get your key from inciteref.com/web/account</a>
       </div>
 
       <button id="btn-test" class="btn-secondary">Test Connection</button>
@@ -42,35 +49,14 @@
     </section>
 
     <section>
-      <h2>Recommendations</h2>
+      <h2>Display</h2>
       <div class="field">
         <label for="k">Number of results</label>
         <input type="number" id="k" min="1" max="50" step="1">
       </div>
       <div class="field">
-        <label for="contextSentences">Context window (sentences)</label>
-        <input type="number" id="contextSentences" min="2" max="20" step="1">
-      </div>
-    </section>
-
-    <section>
-      <h2>Citation Format</h2>
-      <div class="field">
-        <label for="googleDocsCitationFormat">Google Docs format</label>
-        <input type="text" id="googleDocsCitationFormat" placeholder="[@{bibtex_key}]">
-        <span class="help">Placeholders: {bibtex_key}, {first_author}, {year}, {title}</span>
-      </div>
-      <div class="field">
-        <label for="overleafCitationFormat">Overleaf format</label>
-        <input type="text" id="overleafCitationFormat" placeholder="\cite{{bibtex_key}}">
-      </div>
-    </section>
-
-    <section>
-      <h2>Display</h2>
-      <div class="field">
         <label class="checkbox">
-          <input type="checkbox" id="showParagraphs"> Show evidence paragraphs
+          <input type="checkbox" id="showParagraphs"> Show relevant passages
         </label>
       </div>
       <div class="field">
@@ -79,6 +65,35 @@
         </label>
       </div>
     </section>
+
+    <details class="advanced-section">
+      <summary class="advanced-toggle">Advanced</summary>
+      <div class="advanced-content">
+        <div class="field">
+          <label>API Mode</label>
+          <div class="radio-group">
+            <label class="radio"><input type="radio" name="apiMode" value="cloud"> Cloud (inciteref.com)</label>
+            <label class="radio"><input type="radio" name="apiMode" value="local"> Local (incite serve)</label>
+          </div>
+        </div>
+
+        <div class="field hidden" id="local-fields">
+          <label for="localUrl">Local URL</label>
+          <input type="url" id="localUrl" placeholder="http://localhost:8230">
+        </div>
+
+        <div class="field">
+          <label for="contextSentences">Context window (sentences)</label>
+          <input type="number" id="contextSentences" min="2" max="20" step="1">
+        </div>
+
+        <div class="field">
+          <label for="overleafCitationFormat">Overleaf citation format</label>
+          <input type="text" id="overleafCitationFormat" placeholder="\cite{{bibtex_key}}">
+          <span class="help">Override for Overleaf/LaTeX documents</span>
+        </div>
+      </div>
+    </details>
 
     <div class="actions">
       <button id="btn-save" class="btn-primary">Save Settings</button>

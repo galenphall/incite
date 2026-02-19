@@ -17,8 +17,13 @@ export function formatCitation(
 		? rec.authors[0].split(",")[0].split(" ").pop() ?? ""
 		: "";
 
+	// Generate a human-readable fallback key (e.g. "Smith2024") instead of UUID
+	const fallbackKey = firstAuthor && rec.year
+		? `${firstAuthor}${rec.year}`
+		: firstAuthor || rec.title?.split(/\s+/).slice(0, 3).join("") || rec.paper_id;
+
 	const values: Record<string, string> = {
-		bibtex_key: rec.bibtex_key ?? rec.paper_id,
+		bibtex_key: rec.bibtex_key ?? fallbackKey,
 		paper_id: rec.paper_id,
 		first_author: firstAuthor,
 		year: rec.year?.toString() ?? "",
@@ -76,7 +81,18 @@ export function formatMultiCitation(
 			return `[@${keys.join("; @")}]`;
 		}
 		case "individual": {
-			return recs.map((r) => formatCitation(r, template)).join(separator);
+			const formatted = recs.map((r) => formatCitation(r, template));
+			const first = formatted[0];
+			const delimPairs: [string, string][] = [["(", ")"], ["[", "]"]];
+			const match = delimPairs.find(
+				([open, close]) => first.startsWith(open) && first.endsWith(close)
+			);
+			if (match) {
+				const [open, close] = match;
+				const inner = formatted.map((s) => s.slice(1, -1));
+				return `${open}${inner.join(separator)}${close}`;
+			}
+			return formatted.join(separator);
 		}
 	}
 }

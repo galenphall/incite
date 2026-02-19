@@ -131,3 +131,6 @@
 	margin-right: 2px;
 	vertical-align: middle;
 }
+
+/* Hide individual insert buttons when multi-selection is active */
+.has-selection .mayacite-result .mayacite-insert-btn { display: none; }

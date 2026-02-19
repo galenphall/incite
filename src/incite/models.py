@@ -285,6 +285,7 @@ class Paper:
     source_file: Optional[str] = None
     llm_description: Optional[str] = None  # LLM-generated enriched description
     zotero_uri: Optional[str] = None  # e.g. zotero://select/items/0_KEY
+    pdf_url: Optional[str] = None
 
     def __post_init__(self):
         if not self.id:

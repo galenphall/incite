@@ -1,11 +1,72 @@
-import type { Recommendation, RecommendResponse, TrackedCitation } from "@incite/shared";
-import { CitationTracker, exportBibTeX, exportRIS, exportFormattedText } from "@incite/shared";
+import type { Recommendation, RecommendResponse, TrackedCitation, UIClassMap } from "@incite/shared";
+import {
+  CitationTracker,
+  exportBibTeX,
+  exportRIS,
+  exportFormattedText,
+  escapeHtml,
+  escapeAttr,
+  renderResultCardHTML,
+  renderBibliographyHTML,
+} from "@incite/shared";
 import { ChromeCitationStorage, getDocKeyFromActiveTab } from "../shared/citation-storage";
+
+// --- Chrome-specific class map ---
+
+const CHROME_CLASS_MAP: UIClassMap = {
+  resultCard: "result-card",
+  resultHeader: "result-header",
+  resultHeaderLeft: "result-header-left",
+  selectCheckbox: "select-checkbox",
+  rankBadge: "rank-badge",
+  citedBadge: "cited-badge",
+  confidenceBadge: "confidence-badge",
+  confidenceHigh: "confidence-high",
+  confidenceMid: "confidence-medium",
+  confidenceLow: "confidence-low",
+  resultTitle: "result-title",
+  resultMeta: "result-meta",
+  evidence: "evidence",
+  evidenceSecondary: "evidence-secondary",
+  evidenceScore: "evidence-score",
+  resultAbstract: "result-abstract",
+  resultActions: "result-actions",
+  insertBtn: "btn-small btn-insert",
+  copyBtn: "btn-small",
+  bibSection: "bibliography-section",
+  bibToggle: "bib-toggle",
+  bibContent: "bib-content",
+  bibExportBar: "bib-export-bar",
+  bibList: "bib-list",
+  bibItem: "bib-item",
+  bibItemText: "bib-item-text",
+  bibItemAuthors: "bib-item-authors",
+  bibItemTitle: "bib-item-title",
+  bibRemove: "bib-remove",
+};
 
 // --- State ---
 let isLoading = false;
 const selectedRecs = new Map<string, Recommendation>();
 let tracker: CitationTracker | null = null;
+let panelSettings: { showParagraphs: boolean; showAbstracts: boolean } = {
+  showParagraphs: true,
+  showAbstracts: false,
+};
+
+async function loadPanelSettings() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GET_SETTINGS" });
+    if (response?.settings) {
+      panelSettings = {
+        showParagraphs: response.settings.showParagraphs ?? true,
+        showAbstracts: response.settings.showAbstracts ?? false,
+      };
+    }
+  } catch (err) {
+    console.error("Failed to load panel settings:", err);
+  }
+}
 
 // --- DOM references ---
 const content = document.getElementById("content")!;
@@ -44,10 +105,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // Signal that the panel is ready
-chrome.runtime.sendMessage({ type: "PANEL_READY" }).catch(() => {});
+chrome.runtime.sendMessage({ type: "PANEL_READY" }).catch((err) => {
+  console.error("PANEL_READY message failed:", err);
+});
 
-// Check health and initialize tracker on load
+// Check health, load settings, and initialize tracker on load
 checkHealth();
+loadPanelSettings();
 initTracker();
 
 // --- Tracker initialization ---
@@ -74,7 +138,7 @@ async function getRecommendations() {
     if (response?.error) {
       showExtractionError(response.error);
     } else if (response?.response) {
-      showResults(response.response);
+      await showResults(response.response);
     } else {
       showError("Unexpected response from service worker.");
     }
@@ -99,7 +163,7 @@ async function getRecommendationsForText(text: string) {
     if (response?.error) {
       showError(response.error);
     } else if (response?.response) {
-      showResults(response.response);
+      await showResults(response.response);
     } else {
       showError("Unexpected response from service worker.");
     }
@@ -154,7 +218,8 @@ function showExtractionError(message: string) {
   manualText.focus();
 }
 
-function showResults(response: RecommendResponse) {
+async function showResults(response: RecommendResponse) {
+  await loadPanelSettings();
   const recs = response.recommendations;
   selectedRecs.clear();
 
@@ -178,7 +243,12 @@ function showResults(response: RecommendResponse) {
   html += `</div>`;
 
   for (const rec of recs) {
-    html += renderResultCard(rec);
+    const isCited = tracker?.isTracked(rec.paper_id) ?? false;
+    html += renderResultCardHTML(rec, {
+      showParagraphs: panelSettings.showParagraphs,
+      showAbstracts: panelSettings.showAbstracts,
+      isCited,
+    }, CHROME_CLASS_MAP);
   }
 
   content.innerHTML = html;
@@ -247,78 +317,11 @@ function updateSelectionBar() {
   if (selectedRecs.size > 0) {
     bar.style.display = "flex";
     count.textContent = `${selectedRecs.size} selected`;
+    content.classList.add("has-selection");
   } else {
     bar.style.display = "none";
+    content.classList.remove("has-selection");
   }
-}
-
-function renderResultCard(rec: Recommendation): string {
-  const confidence = rec.confidence ?? rec.score;
-  const confClass = confidence >= 0.55 ? "confidence-high" : confidence >= 0.35 ? "confidence-medium" : "confidence-low";
-  const confLabel = `${Math.round(confidence * 100)}%`;
-  const isCited = tracker?.isTracked(rec.paper_id) ?? false;
-
-  let html = `<div class="result-card">`;
-
-  // Header: checkbox + rank + badges
-  html += `<div class="result-header">`;
-  html += `<div class="result-header-left">`;
-  html += `<input type="checkbox" class="select-checkbox" data-action="select" data-rec='${escapeAttr(JSON.stringify(rec))}' />`;
-  html += `<span class="rank-badge">#${rec.rank}</span>`;
-  if (isCited) {
-    html += `<span class="cited-badge">Cited</span>`;
-  }
-  html += `</div>`;
-  html += `<span class="confidence-badge ${confClass}">${confLabel}</span>`;
-  html += `</div>`;
-
-  // Title
-  html += `<div class="result-title">${escapeHtml(rec.title)}</div>`;
-
-  // Authors + year
-  const meta: string[] = [];
-  if (rec.authors && rec.authors.length > 0) {
-    const names = rec.authors.slice(0, 3).join(", ");
-    meta.push(rec.authors.length > 3 ? names + " et al." : names);
-  }
-  if (rec.year) meta.push(`(${rec.year})`);
-  if (meta.length > 0) {
-    html += `<div class="result-meta">${escapeHtml(meta.join(" "))}</div>`;
-  }
-
-  // Evidence paragraphs
-  if (rec.matched_paragraphs && rec.matched_paragraphs.length > 0) {
-    for (let i = 0; i < rec.matched_paragraphs.length; i++) {
-      const snippet = rec.matched_paragraphs[i];
-      const text = snippet.text.length > 300 ? snippet.text.slice(0, 300) + "..." : snippet.text;
-      const cls = i === 0 ? "evidence" : "evidence evidence-secondary";
-      const badge = snippet.score != null
-        ? `<span class="evidence-score">${Math.round(snippet.score * 100)}%</span> `
-        : "";
-      html += `<div class="${cls}">${badge}${escapeHtml(text)}</div>`;
-    }
-  } else if (rec.matched_paragraph) {
-    const text = rec.matched_paragraph.length > 300
-      ? rec.matched_paragraph.slice(0, 300) + "..."
-      : rec.matched_paragraph;
-    html += `<div class="evidence">${escapeHtml(text)}</div>`;
-  }
-
-  // Abstract
-  if (rec.abstract) {
-    html += `<div class="result-abstract">${escapeHtml(rec.abstract)}</div>`;
-  }
-
-  // Actions
-  const recJson = escapeAttr(JSON.stringify(rec));
-  const bibtexKey = rec.bibtex_key ?? rec.paper_id;
-  html += `<div class="result-actions">`;
-  html += `<button class="btn-small btn-insert" data-action="insert" data-rec='${recJson}'>Insert</button>`;
-  html += `<button class="btn-small" data-action="copy" data-copy="${escapeAttr(bibtexKey)}">Copy Key</button>`;
-  html += `</div>`;
-
-  html += `</div>`;
-  return html;
 }
 
 async function insertCitation(rec: Recommendation) {
@@ -410,74 +413,47 @@ function renderBibliography() {
   if (!tracker || tracker.count === 0) return;
 
   const citations = tracker.getAll();
+  const bibHtml = renderBibliographyHTML(citations, CHROME_CLASS_MAP);
 
-  let html = `<div id="bibliography-section" class="bibliography-section">`;
-  html += `<button class="bib-toggle" id="bib-toggle">`;
-  html += `Bibliography (${citations.length} citation${citations.length !== 1 ? "s" : ""})`;
-  html += `<span class="toggle-arrow">&#9662;</span>`;
-  html += `</button>`;
-
-  html += `<div class="bib-content" id="bib-content" style="display:none;">`;
-
-  // Export buttons
-  html += `<div class="bib-export-bar">`;
-  html += `<button class="btn-small" id="bib-export-bibtex">BibTeX</button>`;
-  html += `<button class="btn-small" id="bib-export-ris">RIS</button>`;
-  html += `<button class="btn-small" id="bib-export-apa">APA</button>`;
-  html += `</div>`;
-
-  // Citation list
-  html += `<div class="bib-list">`;
-  for (const cite of citations) {
-    const authorStr = cite.authors.length > 0
-      ? cite.authors.length > 2
-        ? cite.authors[0].split(" ").pop() + " et al."
-        : cite.authors.map((a) => a.split(" ").pop()).join(" & ")
-      : "";
-    const yearStr = cite.year != null ? ` (${cite.year})` : "";
-
-    html += `<div class="bib-item" data-paper-id="${escapeAttr(cite.paper_id)}">`;
-    html += `<div class="bib-item-text">`;
-    html += `<span class="bib-item-authors">${escapeHtml(authorStr + yearStr)}</span> `;
-    html += `<span class="bib-item-title">${escapeHtml(cite.title)}</span>`;
-    html += `</div>`;
-    html += `<button class="bib-remove" data-action="bib-remove" data-paper-id="${escapeAttr(cite.paper_id)}" title="Remove">&times;</button>`;
-    html += `</div>`;
-  }
-  html += `</div>`;
-
-  html += `</div>`; // bib-content
-  html += `</div>`; // bibliography-section
+  // Wrap in a container with the id for removal on re-render
+  const wrapper = document.createElement("div");
+  wrapper.id = "bibliography-section";
+  wrapper.innerHTML = bibHtml;
+  const bibElement = wrapper.firstElementChild as HTMLElement;
 
   // Append after content area
-  document.body.appendChild(createElementFromHTML(html));
+  document.body.appendChild(bibElement);
 
   // Attach bibliography event listeners
-  document.getElementById("bib-toggle")?.addEventListener("click", () => {
-    const bibContent = document.getElementById("bib-content");
-    const toggle = document.getElementById("bib-toggle");
+  bibElement.querySelector(`.${CHROME_CLASS_MAP.bibToggle}`)?.addEventListener("click", () => {
+    const bibContent = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibContent}`) as HTMLElement | null;
+    const toggle = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibToggle}`);
     if (!bibContent || !toggle) return;
     const isVisible = bibContent.style.display !== "none";
     bibContent.style.display = isVisible ? "none" : "block";
     toggle.classList.toggle("expanded", !isVisible);
   });
 
-  document.getElementById("bib-export-bibtex")?.addEventListener("click", () => {
-    const text = exportBibTeX(tracker!.getAll());
-    copyAndDownload(text, "references.bib", "BibTeX copied & downloaded");
+  // Export button listeners
+  bibElement.querySelectorAll("[data-action='bib-export']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const format = btn.getAttribute("data-format");
+      if (!tracker) return;
+      const allCitations = tracker.getAll();
+      if (format === "bibtex") {
+        const text = exportBibTeX(allCitations);
+        copyAndDownload(text, "references.bib", "BibTeX copied & downloaded");
+      } else if (format === "ris") {
+        const text = exportRIS(allCitations);
+        copyAndDownload(text, "references.ris", "RIS copied & downloaded");
+      } else if (format === "apa") {
+        const text = exportFormattedText(allCitations);
+        navigator.clipboard.writeText(text).then(() => showToast("APA text copied"));
+      }
+    });
   });
 
-  document.getElementById("bib-export-ris")?.addEventListener("click", () => {
-    const text = exportRIS(tracker!.getAll());
-    copyAndDownload(text, "references.ris", "RIS copied & downloaded");
-  });
-
-  document.getElementById("bib-export-apa")?.addEventListener("click", () => {
-    const text = exportFormattedText(tracker!.getAll());
-    navigator.clipboard.writeText(text).then(() => showToast("APA text copied"));
-  });
-
-  document.querySelectorAll("[data-action='bib-remove']").forEach((btn) => {
+  bibElement.querySelectorAll("[data-action='bib-remove']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const paperId = btn.getAttribute("data-paper-id");
       if (!paperId || !tracker) return;
@@ -502,12 +478,6 @@ function copyAndDownload(text: string, filename: string, toastMsg: string) {
   });
 }
 
-function createElementFromHTML(html: string): HTMLElement {
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = html.trim();
-  return wrapper.firstElementChild as HTMLElement;
-}
-
 function showToast(message: string) {
   const existing = document.querySelector(".toast");
   if (existing) existing.remove();
@@ -517,21 +487,4 @@ function showToast(message: string) {
   toast.textContent = message;
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2500);
-}
-
-// --- Utilities ---
-
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function escapeAttr(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/'/g, "&#39;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }

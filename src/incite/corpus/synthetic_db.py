@@ -5,9 +5,12 @@ for evaluation. Provides export to JSONL format compatible with
 the existing test set evaluation pipeline.
 """
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class SyntheticDB:
@@ -96,8 +99,10 @@ class SyntheticDB:
                     ),
                 )
                 inserted += 1
-            except sqlite3.Error:
-                pass
+            except sqlite3.Error as e:
+                logger.warning(
+                    "Failed to insert context %s for paper %s: %s", ctx_id, ctx["paper_id"], e
+                )
         self._conn.commit()
         return inserted
 
@@ -122,8 +127,13 @@ class SyntheticDB:
                         (paper_id, neighbor_id, rank),
                     )
                     inserted += 1
-                except sqlite3.Error:
-                    pass
+                except sqlite3.Error as e:
+                    logger.warning(
+                        "Failed to insert reference set entry %s -> %s: %s",
+                        paper_id,
+                        neighbor_id,
+                        e,
+                    )
         self._conn.commit()
         return inserted
 

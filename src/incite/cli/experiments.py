@@ -24,6 +24,12 @@ def register(subparsers):
         "--top-n", type=int, default=10, help="Number of top improved/regressed queries to show"
     )
 
+    exp_delete_parser = exp_subparsers.add_parser("delete", help="Delete an experiment run")
+    exp_delete_parser.add_argument("run_id", help="Run ID (or prefix) to delete")
+    exp_delete_parser.add_argument(
+        "--yes", "-y", action="store_true", help="Skip confirmation prompt"
+    )
+
     exp_parser.set_defaults(func=cmd_experiments)
 
 
@@ -53,5 +59,27 @@ def cmd_experiments(args):
     elif args.exp_command == "diff":
         print(logger.diff_runs(args.run_a, args.run_b, metric=args.metric, top_n=args.top_n))
 
+    elif args.exp_command == "delete":
+        run = logger.get_run(args.run_id)
+        if not run:
+            print(f"No run found matching '{args.run_id}'")
+            return
+        if not args.yes:
+            r10 = run.results.get("recall@10", 0)
+            notes = (run.notes or "")[:40]
+            print(f"Run:    {run.id}")
+            print(f"Date:   {run.timestamp[:19]}")
+            print(f"Method: {run.config.method}  R@10: {r10:.3f}")
+            if notes:
+                print(f"Notes:  {notes}")
+            confirm = input("\nDelete this run? [y/N] ")
+            if confirm.lower() not in ("y", "yes"):
+                print("Cancelled.")
+                return
+        if logger.delete_run(args.run_id):
+            print(f"Deleted run {run.id}")
+        else:
+            print("Delete failed.")
+
     else:
-        print("Usage: incite experiments {list|compare|diff}")
+        print("Usage: incite experiments {list|compare|diff|delete}")

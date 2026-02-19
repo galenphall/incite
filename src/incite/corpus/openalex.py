@@ -179,3 +179,69 @@ class OpenAlexClient:
                 logger.warning("Error in batch fetch: %s", e)
 
         return papers
+
+    def get_works_batch_by_doi(self, dois: list[str]) -> dict[str, Paper]:
+        """Fetch multiple works by DOI using the filter API.
+
+        Uses filter=doi:url1|url2 for efficient bulk lookups (up to 50 per request).
+
+        Args:
+            dois: List of DOI strings (without URL prefix)
+
+        Returns:
+            Dict mapping DOI (lowercase) to Paper object
+        """
+        results: dict[str, Paper] = {}
+        batch_size = 50
+
+        for i in range(0, len(dois), batch_size):
+            batch = dois[i : i + batch_size]
+            self._rate_limit()
+
+            doi_urls = "|".join(f"https://doi.org/{doi}" for doi in batch)
+            url = f"{self.BASE_URL}/works"
+            params = {
+                **self._params(),
+                "filter": f"doi:{doi_urls}",
+                "per-page": batch_size,
+            }
+
+            try:
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                for item in data.get("results", []):
+                    title = item.get("title")
+                    if not title:
+                        continue
+
+                    abstract = self.reconstruct_abstract(item.get("abstract_inverted_index", {}))
+                    if not abstract:
+                        continue
+
+                    raw_doi = item.get("doi", "")
+                    doi = raw_doi.replace("https://doi.org/", "") if raw_doi else None
+                    if not doi:
+                        continue
+
+                    authors = []
+                    for authorship in item.get("authorships", []):
+                        author = authorship.get("author", {})
+                        if author.get("display_name"):
+                            authors.append(author["display_name"])
+
+                    openalex_id = item.get("id", "").split("/")[-1]
+
+                    results[doi.lower()] = Paper(
+                        id=openalex_id,
+                        title=title,
+                        abstract=abstract,
+                        authors=authors,
+                        year=item.get("publication_year"),
+                        doi=doi,
+                    )
+            except requests.RequestException as e:
+                logger.warning("Error in OpenAlex DOI batch fetch: %s", e)
+
+        return results

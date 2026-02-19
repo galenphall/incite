@@ -54,6 +54,38 @@ function testAccess() {
   return results;
 }
 
+// ── Workspace Add-on entry point ────────────────────────────────
+
+/** Homepage trigger for Workspace Marketplace add-on. Returns a Card. */
+function onHomepage(e) {
+  var card = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('inCite'))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText(
+          'AI-powered citation recommendations from your personal paper library.'
+        ))
+        .addWidget(CardService.newTextButton()
+          .setText('Open Recommendations Panel')
+          .setOnClickAction(CardService.newAction().setFunctionName('openSidebarFromCard'))
+        )
+        .addWidget(CardService.newTextButton()
+          .setText('Settings')
+          .setOnClickAction(CardService.newAction().setFunctionName('openSettingsFromCard'))
+        )
+    )
+    .build();
+  return card;
+}
+
+function openSidebarFromCard() {
+  showSidebar();
+}
+
+function openSettingsFromCard() {
+  showSettings();
+}
+
 // ── Menu & sidebar ──────────────────────────────────────────────
 
 function onOpen() {
@@ -88,7 +120,10 @@ function include(filename) {
 // ── Settings (UserProperties) ───────────────────────────────────
 
 var DEFAULTS = {
+  apiMode: 'cloud',
+  cloudUrl: 'https://inciteref.com',
   apiUrl: 'http://127.0.0.1:8230',
+  apiToken: '',
   k: 10,
   authorBoost: 1.0,
   contextSentences: 6,
@@ -99,10 +134,13 @@ var DEFAULTS = {
 function getSettings() {
   var props = PropertiesService.getUserProperties().getProperties();
   return {
+    apiMode:           props.apiMode           || DEFAULTS.apiMode,
+    cloudUrl:          props.cloudUrl          || DEFAULTS.cloudUrl,
     apiUrl:            props.apiUrl            || DEFAULTS.apiUrl,
-    k:                 parseInt(props.k, 10)   || DEFAULTS.k,
-    authorBoost:       parseFloat(props.authorBoost) || DEFAULTS.authorBoost,
-    contextSentences:  parseInt(props.contextSentences, 10) || DEFAULTS.contextSentences,
+    apiToken:          props.apiToken          || DEFAULTS.apiToken,
+    k:                 isNaN(parseInt(props.k, 10)) ? DEFAULTS.k : parseInt(props.k, 10),
+    authorBoost:       isNaN(parseFloat(props.authorBoost)) ? DEFAULTS.authorBoost : parseFloat(props.authorBoost),
+    contextSentences:  isNaN(parseInt(props.contextSentences, 10)) ? DEFAULTS.contextSentences : parseInt(props.contextSentences, 10),
     insertFormat:      props.insertFormat      || DEFAULTS.insertFormat,
     showParagraphs:    props.showParagraphs !== undefined ? props.showParagraphs === 'true' : DEFAULTS.showParagraphs
   };

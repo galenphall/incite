@@ -8,6 +8,7 @@ import { InCiteSidebarView, VIEW_TYPE_INCITE } from "./sidebar-view";
 import type { InCiteSettings, Recommendation } from "./types";
 import {
 	DEFAULT_SETTINGS,
+	getActiveUrl,
 	formatMultiCitation,
 	CitationTracker,
 	exportBibTeX,
@@ -17,7 +18,12 @@ import {
 
 export default class InCitePlugin extends Plugin {
 	settings: InCiteSettings = DEFAULT_SETTINGS;
-	client: InCiteClient = new InCiteClient(DEFAULT_SETTINGS.apiUrl);
+	client: InCiteClient = new InCiteClient({
+		apiMode: DEFAULT_SETTINGS.apiMode,
+		cloudUrl: DEFAULT_SETTINGS.cloudUrl,
+		localUrl: DEFAULT_SETTINGS.localUrl,
+		apiToken: DEFAULT_SETTINGS.apiToken,
+	});
 	private watcher: CitationWatcher | null = null;
 	private lastEditor: Editor | null = null;
 	private tracker: CitationTracker | null = null;
@@ -78,13 +84,31 @@ export default class InCitePlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const loaded = await this.loadData();
+
+		// Migration: old apiUrl → new apiMode/localUrl/cloudUrl
+		if (loaded?.apiUrl && !loaded?.apiMode) {
+			loaded.localUrl = loaded.apiUrl;
+			loaded.apiMode = "local";
+			delete loaded.apiUrl;
+		}
+
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
-		this.client.setBaseUrl(this.settings.apiUrl);
+		this.client.updateConfig({
+			apiMode: this.settings.apiMode,
+			cloudUrl: this.settings.cloudUrl,
+			localUrl: this.settings.localUrl,
+			apiToken: this.settings.apiToken,
+		});
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-		this.client.setBaseUrl(this.settings.apiUrl);
+		this.client.updateConfig({
+			apiMode: this.settings.apiMode,
+			cloudUrl: this.settings.cloudUrl,
+			localUrl: this.settings.localUrl,
+			apiToken: this.settings.apiToken,
+		});
 
 		// Update sidebar view settings
 		const view = this.getSidebarView();
@@ -233,13 +257,23 @@ export default class InCitePlugin extends Plugin {
 		} catch (err) {
 			const message =
 				err instanceof Error ? err.message : "Failed to connect";
-			if (view) {
-				view.setError(
-					`Could not reach inCite server at ${this.settings.apiUrl}. ` +
-						`Is 'incite serve' running? (${message})`
-				);
+			if (this.settings.apiMode === "cloud") {
+				if (view) {
+					view.setError(
+						`Could not reach inCite cloud. Check your API token. (${message})`
+					);
+				}
+				new Notice("inCite: Could not reach cloud. Check your API token.");
+			} else {
+				const url = getActiveUrl(this.settings);
+				if (view) {
+					view.setError(
+						`Could not reach inCite at ${url}. ` +
+							`Is 'incite serve' running? (${message})`
+					);
+				}
+				new Notice("inCite: Server not reachable. Run 'incite serve'.");
 			}
-			new Notice("inCite: Server not reachable. Run 'incite serve'.");
 		}
 	}
 

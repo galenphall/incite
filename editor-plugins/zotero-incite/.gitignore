@@ -1,0 +1,3 @@
+node_modules/
+addon/content/scripts/index.js
+*.xpi

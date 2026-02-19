@@ -1,23 +1,16 @@
-import type { Recommendation, RecommendResponse, HealthResponse } from "@incite/shared";
+import type { Recommendation, RecommendResponse, HealthResponse, InCiteSettings, ApiMode } from "@incite/shared";
 
-/** API mode: cloud server or local incite serve */
-export type ApiMode = "cloud" | "local";
+// Re-export shared types used by other Chrome files
+export type { ApiMode } from "@incite/shared";
 
 /** Editor type detected from the current tab URL */
 export type EditorType = "googledocs" | "overleaf" | "unknown";
 
-/** Chrome extension settings stored in chrome.storage.sync */
-export interface ChromeExtensionSettings {
-  apiMode: ApiMode;
-  cloudUrl: string;
-  localUrl: string;
-  apiToken: string;
-  k: number;
-  authorBoost: number;
-  contextSentences: number;
+/** Chrome extension settings — extends shared settings with Chrome-specific fields. */
+export interface ChromeExtensionSettings extends InCiteSettings {
+  citationStyle: string;
   googleDocsCitationFormat: string;
   overleafCitationFormat: string;
-  showParagraphs: boolean;
   showAbstracts: boolean;
 }
 

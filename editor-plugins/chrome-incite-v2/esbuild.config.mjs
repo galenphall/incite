@@ -30,12 +30,14 @@ const iifeEntries = [
   "src/content/googledocs.ts",
   "src/content/overleaf-isolated.ts",
   "src/content/overleaf-main.ts",
+  "src/content/translator-runner.ts",
 ];
 
-// Panel and options are loaded via <script> in their own HTML pages
+// Panel, options, and popup are loaded via <script> in their own HTML pages
 const pageEntries = [
   "src/panel/panel.ts",
   "src/options/options.ts",
+  "src/popup/popup.ts",
 ];
 
 const iifeConfig = {

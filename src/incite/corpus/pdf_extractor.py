@@ -4,10 +4,13 @@ This module extracts text from academic PDFs while preserving paragraph structur
 and detecting section headings via font size analysis.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,16 +39,13 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
     try:
         import fitz
     except ImportError:
-        return PDFExtractionResult(
-            full_text="",
-            paragraphs=[],
-            section_headings=[],
-            num_pages=0,
-            error="PyMuPDF not installed. Install with: pip install pymupdf",
+        raise ImportError(
+            "PyMuPDF is required for PDF extraction. Install with: pip install pymupdf"
         )
 
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
+        logger.warning("PDF file not found: %s", pdf_path)
         return PDFExtractionResult(
             full_text="",
             paragraphs=[],
