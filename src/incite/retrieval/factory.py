@@ -75,6 +75,7 @@ EMBEDDERS = {
         "class": "FineTunedGraniteEmbedder",
         "module": "incite.embeddings.finetuned",
         "model": "models/granite-citation-v6/final",
+        "cloud_only": True,
     },
     "granite-ft-onnx": {
         "name": "Granite-small-R2 fine-tuned v6b ONNX (fast CPU inference)",
@@ -82,6 +83,7 @@ EMBEDDERS = {
         "module": "incite.embeddings.finetuned",
         "model": "models/granite-citation-v6/onnx",
         "storage_key": "granite-ft",  # ONNX produces identical embeddings; share index
+        "cloud_only": True,
     },
 }
 
@@ -96,6 +98,17 @@ def get_storage_key(embedder_type: str) -> str:
     """
     config = EMBEDDERS.get(embedder_type, {})
     return config.get("storage_key", embedder_type)
+
+
+def get_available_embedders() -> dict[str, dict]:
+    """Return embedders available for local use (excludes cloud-only models without local files)."""
+    available = {}
+    for key, config in EMBEDDERS.items():
+        if config.get("cloud_only") and "model" in config:
+            if not Path(config["model"]).exists():
+                continue
+        available[key] = config
+    return available
 
 
 # Available chunking strategies
@@ -178,6 +191,9 @@ def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
 
     Returns:
         Configured embedder instance (cached)
+
+    Raises:
+        ValueError: If embedder_type is unknown or cloud-only without local model files.
     """
     if embedder_type in _embedder_cache:
         return _embedder_cache[embedder_type]
@@ -186,6 +202,18 @@ def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
         raise ValueError(f"Unknown embedder: {embedder_type}. Available: {list(EMBEDDERS.keys())}")
 
     config = EMBEDDERS[embedder_type]
+
+    # Guard: cloud-only models require local model files
+    if config.get("cloud_only") and "model" in config:
+        model_path = Path(config["model"])
+        if not model_path.exists():
+            raise ValueError(
+                f"'{embedder_type}' requires model files that are not included in the "
+                f"open-source release. Use 'minilm-ft' instead (MRR 0.428), or subscribe "
+                f"to inCite Cloud at https://inciteref.com for access to Granite-FT "
+                f"(MRR 0.550, +28% better)."
+            )
+
     module = __import__(config["module"], fromlist=[config["class"]])
     embedder_class = getattr(module, config["class"])
     kwargs = {}
