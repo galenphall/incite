@@ -6,6 +6,3 @@ README.md
 .git/**
 dist/**
 sidebar.html
-esbuild.config.mjs
-tsconfig.json
-src/sidebar.ts

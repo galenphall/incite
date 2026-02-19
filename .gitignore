@@ -1,3 +1,6 @@
+# OAuth / credentials
+client_secret*.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -75,6 +78,9 @@ logs/
 .env
 *.key
 secrets.yaml
+
+# Tailwind standalone CLI binary
+cloud/tailwindcss
 
 # Node.js
 node_modules/

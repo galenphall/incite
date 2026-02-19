@@ -1,16 +1,11 @@
+import { DEFAULT_SETTINGS as SHARED_DEFAULTS } from "@incite/shared";
 import type { ChromeExtensionSettings } from "./types";
 
 export const DEFAULT_SETTINGS: ChromeExtensionSettings = {
-  apiMode: "cloud",
-  cloudUrl: "https://inciteref.com",
-  localUrl: "http://localhost:8230",
-  apiToken: "",
-  k: 10,
-  authorBoost: 0,
-  contextSentences: 6,
-  googleDocsCitationFormat: "[@{bibtex_key}]",
+  ...SHARED_DEFAULTS,
+  citationStyle: "apa",
+  googleDocsCitationFormat: "({first_author}, {year})",
   overleafCitationFormat: "\\cite{{{bibtex_key}}}",
-  showParagraphs: true,
   showAbstracts: false,
 };
 

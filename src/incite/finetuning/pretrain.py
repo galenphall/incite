@@ -148,7 +148,8 @@ def pretrain_domain(
         loss = DenoisingAutoEncoderLoss(
             model=model,
             decoder_name_or_path=base_model,
-            tie_encoder_decoder=False,  # True breaks with transformers>=5 (missing _tie_encoder_decoder_weights)
+            # True breaks with transformers>=5 (missing _tie_encoder_decoder_weights)
+            tie_encoder_decoder=False,
         )
     elif method == "simcse":
         # SimCSE: each example needs "anchor" and "positive" (same text, different dropout)

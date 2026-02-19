@@ -421,7 +421,6 @@ def mine_hard_negatives(
         batch_scores, batch_indices = index.search(query_embs[start:end], top_k + 1)
         all_scores.append(batch_scores)
         all_indices.append(batch_indices)
-    scores = np.concatenate(all_scores, axis=0)
     indices = np.concatenate(all_indices, axis=0)
     del all_scores, all_indices
 

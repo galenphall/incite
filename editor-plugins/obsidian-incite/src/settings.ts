@@ -17,17 +17,61 @@ export class InCiteSettingTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: "Server" });
 
 		new Setting(containerEl)
-			.setName("API URL")
-			.setDesc("URL of the inCite server (run 'incite serve')")
-			.addText((text) =>
-				text
-					.setPlaceholder("http://127.0.0.1:8230")
-					.setValue(this.plugin.settings.apiUrl)
+			.setName("API mode")
+			.setDesc("Connect to the inCite cloud service or a local server")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("cloud", "Cloud (inciteref.com)")
+					.addOption("local", "Local (incite serve)")
+					.setValue(this.plugin.settings.apiMode)
 					.onChange(async (value) => {
-						this.plugin.settings.apiUrl = value;
+						this.plugin.settings.apiMode = value as "cloud" | "local";
 						await this.plugin.saveSettings();
+						// Re-render to show/hide mode-specific fields
+						this.display();
 					})
 			);
+
+		if (this.plugin.settings.apiMode === "cloud") {
+			new Setting(containerEl)
+				.setName("API token")
+				.setDesc("Your inCite API token (from inciteref.com account settings)")
+				.addText((text) =>
+					text
+						.setPlaceholder("Enter your API token")
+						.setValue(this.plugin.settings.apiToken)
+						.onChange(async (value) => {
+							this.plugin.settings.apiToken = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("Cloud URL")
+				.setDesc("inCite cloud server URL")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://inciteref.com")
+						.setValue(this.plugin.settings.cloudUrl)
+						.onChange(async (value) => {
+							this.plugin.settings.cloudUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		} else {
+			new Setting(containerEl)
+				.setName("Local URL")
+				.setDesc("URL of the local inCite server (run 'incite serve')")
+				.addText((text) =>
+					text
+						.setPlaceholder("http://127.0.0.1:8230")
+						.setValue(this.plugin.settings.localUrl)
+						.onChange(async (value) => {
+							this.plugin.settings.localUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Test connection")
@@ -44,9 +88,15 @@ export class InCiteSettingTab extends PluginSettingTab {
 							new Notice("Server is loading, try again in a moment.");
 						}
 					} catch {
-						new Notice(
-							"Could not connect. Is 'incite serve' running?"
-						);
+						if (this.plugin.settings.apiMode === "cloud") {
+							new Notice(
+								"Could not connect. Check your API token and server URL."
+							);
+						} else {
+							new Notice(
+								"Could not connect. Is 'incite serve' running?"
+							);
+						}
 					}
 				})
 			);

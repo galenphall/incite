@@ -2,25 +2,76 @@
 <html>
 <head>
   <base target="_top">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      font-size: 13px;
-      color: #202124;
-      margin: 0;
-      padding: 16px;
+    :root {
+      --ink:        #1a1a1e;
+      --ink-soft:   #2a2a2f;
+      --ink-muted:  #4a4a52;
+      --graphite:   #6b6b74;
+      --slate:      #8e8e97;
+      --silver:     #b8b8bf;
+      --fog:        #dcdce0;
+      --paper:      #f0efe9;
+      --cream:      #faf9f3;
+
+      --oxblood:       #8b2e2e;
+      --oxblood-light: #a83c3c;
+      --oxblood-faint: #f2e8e8;
+      --oxblood-muted: #c47070;
+
+      --success: #3a6b4a;
+      --error:   #8b2e2e;
+
+      --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+      --font-body:    'IBM Plex Sans', -apple-system, sans-serif;
+      --font-mono:    'IBM Plex Mono', 'SF Mono', monospace;
+
+      --bg: var(--cream);
+      --fg: var(--ink);
+      --fg-muted: var(--graphite);
+      --border: var(--fog);
+      --card-bg: #ffffff;
+      --accent: var(--oxblood);
+      --accent-hover: var(--oxblood-light);
+      --input-bg: #ffffff;
+      --input-border: var(--fog);
+      --radius: 6px;
+      --radius-sm: 3px;
     }
 
-    h3 {
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
       font-size: 13px;
-      font-weight: 600;
-      color: #5f6368;
+      color: var(--fg);
+      background: var(--bg);
+      line-height: 1.5;
+      padding: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Logo header */
+    .settings-logo {
+      text-align: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-logo svg { height: 24px; width: auto; }
+
+    /* Section headers */
+    h3 {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--fg-muted);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.08em;
       margin: 18px 0 8px;
     }
-    h3:first-child { margin-top: 0; }
+    h3:first-of-type { margin-top: 0; }
 
     .field {
       margin-bottom: 12px;
@@ -30,28 +81,33 @@
       display: block;
       font-weight: 500;
       margin-bottom: 3px;
+      font-size: 13px;
     }
 
     .field-desc {
+      font-family: var(--font-mono);
       font-size: 11px;
-      color: #5f6368;
+      color: var(--fg-muted);
       margin-bottom: 4px;
     }
 
     input[type="text"],
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
-      padding: 7px 10px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
+      padding: 8px 10px;
+      border: 1px solid var(--input-border);
+      border-radius: var(--radius-sm);
       font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s;
+      font-family: var(--font-body);
+      background: var(--input-bg);
+      color: var(--fg);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    input:focus {
-      border-color: #1a73e8;
-      box-shadow: 0 0 0 1px #1a73e8;
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--oxblood-muted);
+      box-shadow: 0 0 0 3px var(--oxblood-faint);
     }
 
     .checkbox-field {
@@ -63,42 +119,102 @@
     .checkbox-field input[type="checkbox"] {
       width: 16px;
       height: 16px;
+      accent-color: var(--accent);
     }
 
+    /* Test connection */
+    .test-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+      margin-bottom: 12px;
+    }
+
+    .btn-test {
+      padding: 6px 14px;
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-test:hover {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    .test-result {
+      font-size: 12px;
+    }
+    .test-result.success { color: var(--success); }
+    .test-result.error { color: var(--error); }
+
+    /* Advanced section */
+    details {
+      margin-top: 12px;
+    }
+    summary {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      padding: 8px 0;
+      list-style: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "\25B8 "; }
+    details[open] summary::before { content: "\25BE "; }
+
+    .advanced-content {
+      padding-top: 8px;
+    }
+
+    /* Buttons */
     .btn-row {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
       margin-top: 20px;
       padding-top: 12px;
-      border-top: 1px solid #dadce0;
+      border-top: 1px solid var(--border);
     }
 
     .btn {
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 8px 20px;
       font-size: 13px;
       font-weight: 500;
+      font-family: var(--font-body);
       cursor: pointer;
+      transition: background 0.15s ease;
     }
     .btn-save {
-      background: #1a73e8;
-      color: #fff;
+      background: var(--accent);
+      color: var(--cream);
     }
-    .btn-save:hover { background: #1765cc; }
+    .btn-save:hover { background: var(--accent-hover); }
     .btn-cancel {
-      background: #f1f3f4;
-      color: #3c4043;
+      background: var(--paper);
+      color: var(--fg);
+      border: 1px solid var(--border);
     }
-    .btn-cancel:hover { background: #e8eaed; }
+    .btn-cancel:hover { background: var(--fog); }
 
     .toast {
       display: none;
-      background: #137333;
-      color: #fff;
+      background: var(--success);
+      color: var(--cream);
       padding: 6px 12px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 12px;
       margin-top: 8px;
       text-align: center;
@@ -108,35 +224,62 @@
 </head>
 <body>
 
-  <h3>Server</h3>
-
-  <div class="field">
-    <label for="apiUrl">API URL</label>
-    <div class="field-desc">URL of the inCite server (run <code>incite serve</code>)</div>
-    <input type="text" id="apiUrl" placeholder="http://127.0.0.1:8230">
+  <!-- Logo -->
+  <div class="settings-logo">
+    <svg viewBox="0 0 431.65 106.93" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <path d="M134.07,43.68c7.47-8.22,17.49-13.22,28.85-10.73,11.03,2.42,14.83,11.61,14.83,21.88,0,13.48-.02,26.67-.02,39.38,0,5.02,2.32,8.07,7.68,8.28v2.63s-35.4.01-35.4.01l-.08-2.62c5.74-.71,7.68-2.98,7.66-8.54-.04-13.41-.25-28.59-.25-42.25-.8-11.86-12.45-12.31-19.92-5.53-1,.91-2.47,2.2-2.64,3.6,0,13.8,0,27.88,0,41.78,0,2.81.34,7.21,2.65,9.11,1.43,1.18,3.22,1.34,4.94,1.78l.1,2.66h-35.52l.03-2.62c5.39-.39,7.42-2.57,7.86-7.86l.04-45.34c0-5.56-2.26-9.56-8.41-9.71v-2.64c9.2.79,17.62-2.36,26.05-5.47.36.07.49,1.18.56,1.54.63,3.37.6,7.22.99,10.65"/>
+        <path d="M267.94,12.53l1.73,24.43-3.45.24c-4.02-10.78-9.01-24.78-22.13-26.61-15.79-2.21-24.49,11.71-27.62,25.13-4.63,19.9-3.81,68.94,26.68,66.52,14.64-1.16,19.78-15.65,24.27-27.37l3.07.71-1.9,24.03c-4.62,2.79-9.95,4.78-15.24,5.88-24.12,5.01-48.98-2.78-58.09-27.12-5.27-14.09-5.04-32.79,1.24-46.53C209,4.51,243.08-.72,267.94,12.53"/>
+        <path d="M431.19,67.44h-41.28c.01,6.12.99,13.68,4.13,19.03,6.64,11.33,22.48,11.56,31.64,3.17,1.18-1.08,2.03-2.41,3.24-3.44l2.46,1.75c-4.38,9.39-12.29,16.92-22.89,18.33-30.13,4.02-45.32-23.98-37.27-50.47,5.34-17.6,23.06-27.03,40.89-22.44,15.17,3.91,21.37,19.55,19.1,34.06M412.23,62.88c.73-6.24.57-13.59-1.74-19.5-1.85-4.72-5.84-7.67-11.05-5.89-5.45,1.86-7.52,8.96-8.5,14.06-.72,3.73-1.19,7.52-1.04,11.32h22.32Z"/>
+        <path d="M348.15,12.72v21.84h15.36v4.8h-15.36v51c0,.57.5,2.48.71,3.13,2.38,7.25,11.32,4.9,15.04.13l2.25,2.26c-1.7,2.98-4,5.65-6.89,7.52-8.59,5.57-23.59,4.5-28.76-5.23-.91-1.72-2.28-5.42-2.28-7.32v-51.12l-.36-.36h-9v-3.84c11.85-2.02,20.23-11.79,23.76-22.8h5.52Z"/>
+        <path d="M307.35,93.72c.07.97.36,2.51.6,3.48.99,3.99,3.73,4.99,7.55,5.29v2.63c-2.5-.05-5.04.06-7.56,0-.57-.01-1.09-.25-1.66-.26-9.26-.15-18.51.05-27.73.49l.15-2.89c2.34-.37,5.24-.47,6.8-2.51,1.43-1.86,1.93-5.81,1.93-8.15,0-11.86-.26-26.63-.26-38.88,0-1.43.1-2.87-.02-4.3-.45-5.2-2.91-9.13-8.61-8.79v-3.12c4.26.81,8.1.63,12.24-.6,5.76-1.72,10.92-5.52,16.56-7.56v65.16Z"/>
+        <path d="M92.31,28.56v65.64c.37,5.22,2.54,8.44,8.16,8.28v2.64l-37.2.24v-2.88c2.15-.16,5.12-.47,6.73-2.03,1.97-1.9,2.4-6.48,2.4-9.12,0-11.95-.26-26.26-.26-38.4,0-3.35.27-6.32-1.34-9.46-1.41-2.75-4.58-3.99-7.53-3.63v-3.12c4.04.7,7.78.75,11.76-.36,6.15-1.72,11.27-5.77,17.28-7.8"/>
+        <path d="M294.82.08c6.84-.57,13.81,2.33,14.42,9.92,1.21,15.04-21.9,15.74-25,4.12-2.1-7.88,2.88-13.39,10.58-14.04"/>
+        <path d="M79.78.08c8.52-.71,15.12,3.59,14.21,12.77-1.3,12.96-26.66,12.73-25.19-3.35.53-5.87,5.53-8.96,10.99-9.41"/>
+        <path d="M21.92,69.82h16.32c.16,0,.31.08.39.21l21.47,34.49c.17.28-.05.62-.4.62h-16.12c-.17,0-.33-.09-.4-.22l-6.37-11.2-6.32-11.82c-.08-.14-.23-.23-.41-.23s-.33.09-.41.23l-6.32,11.82-6.37,11.2c-.08.14-.23.22-.4.22H.45c-.35,0-.57-.34-.39-.62l21.46-34.49c.08-.13.23-.21.4-.21"/>
+      </g>
+    </svg>
   </div>
 
-  <h3>Retrieval</h3>
+  <h3>Connection</h3>
 
   <div class="field">
-    <label for="k">Number of results</label>
-    <div class="field-desc">How many recommendations to show (1-50)</div>
-    <input type="number" id="k" min="1" max="50" step="1">
+    <label for="apiMode">API Mode</label>
+    <div class="field-desc">Use the cloud service or a local server</div>
+    <select id="apiMode">
+      <option value="cloud">Cloud (inciteref.com)</option>
+      <option value="local">Local (incite serve)</option>
+    </select>
   </div>
 
-  <div class="field">
-    <label for="authorBoost">Author boost</label>
-    <div class="field-desc">Boost papers whose authors appear in context (1.0 = no boost)</div>
-    <input type="number" id="authorBoost" min="0" max="5" step="0.1">
+  <div id="cloud-fields">
+    <div class="field">
+      <label for="apiToken">API Token</label>
+      <div class="field-desc">Your API token (from inciteref.com account settings)</div>
+      <input type="text" id="apiToken" placeholder="mc_...">
+    </div>
+
+    <div class="field">
+      <label for="cloudUrl">Cloud URL</label>
+      <div class="field-desc">URL of the inCite cloud service</div>
+      <input type="text" id="cloudUrl" placeholder="https://inciteref.com">
+    </div>
   </div>
 
-  <div class="field">
-    <label for="contextSentences">Context sentences</label>
-    <div class="field-desc">Total sentences to extract around cursor (2-20)</div>
-    <input type="number" id="contextSentences" min="2" max="20" step="1">
+  <div id="local-fields" style="display:none;">
+    <div class="field">
+      <label for="apiUrl">Local API URL</label>
+      <div class="field-desc">URL of the local inCite server (run <code>incite serve</code>)</div>
+      <input type="text" id="apiUrl" placeholder="http://127.0.0.1:8230">
+    </div>
   </div>
 
-  <h3>Citation format</h3>
+  <div class="test-row">
+    <button class="btn-test" id="btn-test">Test Connection</button>
+    <span id="test-result" class="test-result"></span>
+  </div>
+
+  <h3>Citation Format</h3>
 
   <div class="field">
     <label for="insertFormat">Insert format</label>
@@ -146,10 +289,33 @@
 
   <h3>Display</h3>
 
+  <div class="field">
+    <label for="k">Number of results</label>
+    <div class="field-desc">How many recommendations to show (1-50)</div>
+    <input type="number" id="k" min="1" max="50" step="1">
+  </div>
+
   <div class="checkbox-field">
     <input type="checkbox" id="showParagraphs">
     <label for="showParagraphs">Show matched paragraphs</label>
   </div>
+
+  <details>
+    <summary>Advanced</summary>
+    <div class="advanced-content">
+      <div class="field">
+        <label for="contextSentences">Context sentences</label>
+        <div class="field-desc">Total sentences to extract around cursor (2-20)</div>
+        <input type="number" id="contextSentences" min="2" max="20" step="1">
+      </div>
+
+      <div class="field">
+        <label for="authorBoost">Author boost</label>
+        <div class="field-desc">Boost papers whose authors appear in context (1.0 = no boost)</div>
+        <input type="number" id="authorBoost" min="0" max="5" step="0.1">
+      </div>
+    </div>
+  </details>
 
   <div class="btn-row">
     <button class="btn btn-cancel" onclick="google.script.host.close()">Cancel</button>
@@ -159,21 +325,37 @@
   <div id="toast" class="toast">Settings saved</div>
 
   <script>
+    /** Toggle visibility of cloud vs local fields based on API mode. */
+    function updateModeVisibility() {
+      var mode = document.getElementById('apiMode').value;
+      document.getElementById('cloud-fields').style.display = mode === 'cloud' ? 'block' : 'none';
+      document.getElementById('local-fields').style.display = mode === 'local' ? 'block' : 'none';
+    }
+
+    document.getElementById('apiMode').addEventListener('change', updateModeVisibility);
+
     // Load current settings into form
     google.script.run
       .withSuccessHandler(function(settings) {
-        document.getElementById('apiUrl').value = settings.apiUrl;
+        document.getElementById('apiMode').value = settings.apiMode || 'cloud';
+        document.getElementById('cloudUrl').value = settings.cloudUrl || 'https://inciteref.com';
+        document.getElementById('apiToken').value = settings.apiToken || '';
+        document.getElementById('apiUrl').value = settings.apiUrl || 'http://127.0.0.1:8230';
         document.getElementById('k').value = settings.k;
         document.getElementById('authorBoost').value = settings.authorBoost;
         document.getElementById('contextSentences').value = settings.contextSentences;
         document.getElementById('insertFormat').value = settings.insertFormat;
         document.getElementById('showParagraphs').checked = settings.showParagraphs;
+        updateModeVisibility();
       })
       .getSettings();
 
     // Save settings
     document.getElementById('btn-save').addEventListener('click', function() {
       var settings = {
+        apiMode: document.getElementById('apiMode').value || 'cloud',
+        cloudUrl: document.getElementById('cloudUrl').value.trim() || 'https://inciteref.com',
+        apiToken: document.getElementById('apiToken').value.trim(),
         apiUrl: document.getElementById('apiUrl').value.trim() || 'http://127.0.0.1:8230',
         k: parseInt(document.getElementById('k').value, 10) || 10,
         authorBoost: parseFloat(document.getElementById('authorBoost').value) || 1.0,
@@ -200,6 +382,50 @@
           alert('Failed to save: ' + err.message);
         })
         .saveSettings(settings);
+    });
+
+    // Test connection
+    document.getElementById('btn-test').addEventListener('click', function() {
+      var resultEl = document.getElementById('test-result');
+      resultEl.textContent = 'Testing...';
+      resultEl.className = 'test-result';
+
+      var mode = document.getElementById('apiMode').value;
+      var baseUrl, healthPath, headers = {};
+
+      if (mode === 'cloud') {
+        baseUrl = (document.getElementById('cloudUrl').value.trim() || 'https://inciteref.com').replace(/\/+$/, '');
+        healthPath = '/api/v1/health';
+        var token = document.getElementById('apiToken').value.trim();
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+      } else {
+        baseUrl = (document.getElementById('apiUrl').value.trim() || 'http://127.0.0.1:8230').replace(/\/+$/, '');
+        healthPath = '/health';
+      }
+
+      var controller = new AbortController();
+      var timer = setTimeout(function() { controller.abort(); }, 5000);
+
+      fetch(baseUrl + healthPath, { headers: headers, signal: controller.signal })
+        .then(function(resp) {
+          clearTimeout(timer);
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          return resp.json();
+        })
+        .then(function(data) {
+          if (data.ready) {
+            resultEl.textContent = 'Connected (' + data.corpus_size + ' papers)';
+            resultEl.className = 'test-result success';
+          } else {
+            resultEl.textContent = 'Server loading...';
+            resultEl.className = 'test-result';
+          }
+        })
+        .catch(function(err) {
+          clearTimeout(timer);
+          resultEl.textContent = 'Failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message);
+          resultEl.className = 'test-result error';
+        });
     });
   </script>
 </body>

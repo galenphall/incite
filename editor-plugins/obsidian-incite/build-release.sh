@@ -11,12 +11,11 @@ OUTPUT_ZIP="$SCRIPT_DIR/obsidian-incite-release.zip"
 
 echo "=== Building inCite Obsidian Plugin ==="
 
-# Step 1: Build shared package
-echo "  Building @incite/shared..."
+# Step 1: Install shared package (no build step needed — esbuild bundles TS directly)
+echo "  Installing @incite/shared..."
 cd "$SHARED_DIR"
 npm install --silent 2>/dev/null
-npm run build --silent 2>/dev/null
-echo "  Shared package built."
+echo "  Shared package ready."
 
 # Step 2: Build plugin
 echo "  Building obsidian-incite..."

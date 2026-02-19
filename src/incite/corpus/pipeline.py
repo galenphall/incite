@@ -377,7 +377,8 @@ def get_pipeline(
 
             config = get_config()
             mode = config.get("processing", {}).get("mode", "local")
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to read processing config, defaulting to local: %s", e)
             mode = "local"
 
     if mode == "cloud":
@@ -390,8 +391,8 @@ def get_pipeline(
             api_key = cloud_config.get("api_key", "")
             if api_url:
                 return CloudPipeline(api_url=api_url, api_key=api_key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Cloud config corrupted or unreadable: %s", e)
         logger.warning("Cloud pipeline not configured, falling back to local")
 
     return LocalPipeline(chunking_strategy=chunking_strategy)

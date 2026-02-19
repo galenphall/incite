@@ -6,11 +6,15 @@ module and all consumers automatically benefit.
 """
 
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import TYPE_CHECKING, Callable, Literal, Optional
 
 from incite.embeddings.base import BaseEmbedder
 from incite.interfaces import Retriever
 from incite.models import Chunk, Paper
+
+if TYPE_CHECKING:
+    from incite.embeddings.chunk_store import ChunkStore
+    from incite.retrieval.two_stage import TwoStageRetriever
 
 # Available embedder configurations
 # Add new embedders here as they become available
@@ -72,9 +76,26 @@ EMBEDDERS = {
         "module": "incite.embeddings.finetuned",
         "model": "models/granite-citation-v6/final",
     },
+    "granite-ft-onnx": {
+        "name": "Granite-small-R2 fine-tuned v6b ONNX (fast CPU inference)",
+        "class": "OnnxGraniteEmbedder",
+        "module": "incite.embeddings.finetuned",
+        "model": "models/granite-citation-v6/onnx",
+        "storage_key": "granite-ft",  # ONNX produces identical embeddings; share index
+    },
 }
 
 DEFAULT_EMBEDDER = "minilm"  # Current best performer with hybrid
+
+
+def get_storage_key(embedder_type: str) -> str:
+    """Return the storage key for an embedder type.
+
+    ONNX variants produce identical embeddings to their PyTorch counterparts,
+    so they share the same storage namespace (FAISS index dir, pgvector rows).
+    """
+    config = EMBEDDERS.get(embedder_type, {})
+    return config.get("storage_key", embedder_type)
 
 
 # Available chunking strategies
@@ -143,15 +164,24 @@ def get_chunker(
     return getattr(module, config["function"])
 
 
+_embedder_cache: dict[str, BaseEmbedder] = {}
+
+
 def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
-    """Get an embedder instance by type.
+    """Get a cached embedder instance by type.
+
+    Returns the same instance for repeated calls with the same embedder_type,
+    avoiding expensive model reloads.
 
     Args:
         embedder_type: Key from EMBEDDERS dict ("minilm", "specter", etc.)
 
     Returns:
-        Configured embedder instance
+        Configured embedder instance (cached)
     """
+    if embedder_type in _embedder_cache:
+        return _embedder_cache[embedder_type]
+
     if embedder_type not in EMBEDDERS:
         raise ValueError(f"Unknown embedder: {embedder_type}. Available: {list(EMBEDDERS.keys())}")
 
@@ -161,7 +191,9 @@ def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
     kwargs = {}
     if "model" in config:
         kwargs["model_path"] = config["model"]
-    return embedder_class(**kwargs)
+    embedder = embedder_class(**kwargs)
+    _embedder_cache[embedder_type] = embedder
+    return embedder
 
 
 def create_retriever(
@@ -224,11 +256,11 @@ def create_retriever(
     # Per-embedder fusion params tuned via scripts/hybrid_sweep.py (3420 queries):
     #   MiniLM-FT v4: stemmed BM25, RRF k=5, 1:1 weights → MRR=0.428
     #   Granite-FT v5: stemmed BM25, RRF k=10, 2:1 neural:bm25 → MRR=0.437
-    HYBRID_PARAMS = {
+    hybrid_params = {
         "granite-ft": {"rrf_k": 10, "neural_weight": 2.0, "bm25_weight": 1.0},
     }
     defaults = {"rrf_k": 5, "neural_weight": 1.0, "bm25_weight": 1.0}
-    params = HYBRID_PARAMS.get(embedder_type, defaults)
+    params = hybrid_params.get(embedder_type, defaults)
 
     from incite.retrieval.bm25 import tokenize_with_stemming
 

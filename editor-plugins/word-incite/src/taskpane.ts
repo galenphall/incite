@@ -1,192 +1,31 @@
 /**
- * inCite Word Add-in Task Pane
+ * inCite Word Add-in Task Pane — Orchestrator
  *
  * Office.js task pane that provides citation recommendations from
  * the inCite cloud server or a local `incite serve` instance.
  *
- * Usage:
- *   1. Sign in at inciteref.com and copy your API token, OR run `incite serve` locally
- *   2. Sideload this add-in in Word
- *   3. Click "Get Recommendations" to search based on cursor context
+ * This module is the entry point: it wires up UI, delegates to
+ * focused modules for settings, API, context extraction, rendering,
+ * bibliography, and citation storage.
  */
 
 import {
-	extractContext,
 	formatCitation,
 	formatMultiCitation,
 	stripCitations,
 	CitationTracker,
-	exportBibTeX,
-	exportRIS,
-	exportFormattedText,
+	escapeHtml,
 } from "@incite/shared";
-import type { Recommendation, CitationStorage, TrackedCitation } from "@incite/shared";
+import type { ApiMode, Recommendation } from "@incite/shared";
 
-// --- Settings ---
+import { settings, loadSettings, saveSettings } from "./settings";
+import { createClient } from "./api";
+import { getContextFromWord } from "./context";
+import { renderResults, renderSelectionBar } from "./results-renderer";
+import { renderBibliography } from "./bibliography";
+import { LocalStorageCitationStorage } from "./citation-storage";
 
-type ApiMode = "cloud" | "local";
-
-interface WordSettings {
-	apiMode: ApiMode;
-	apiToken: string;
-	cloudUrl: string;
-	localUrl: string;
-	k: number;
-	authorBoost: number;
-	contextSentences: number;
-	citationPatterns: string[];
-	insertFormat: string;
-	autoDetectEnabled: boolean;
-	debounceMs: number;
-	showParagraphs: boolean;
-}
-
-const DEFAULT_SETTINGS: WordSettings = {
-	apiMode: "cloud",
-	apiToken: "",
-	cloudUrl: "https://inciteref.com",
-	localUrl: "http://127.0.0.1:8230",
-	k: 10,
-	authorBoost: 1.0,
-	contextSentences: 6,
-	citationPatterns: [
-		"\\[@[^\\]]*\\]",
-		"\\[cite\\]",
-		"\\\\cite\\{[^}]*\\}",
-	],
-	insertFormat: "({first_author}, {year})",
-	autoDetectEnabled: false,
-	debounceMs: 800,
-	showParagraphs: true,
-};
-
-let settings: WordSettings = { ...DEFAULT_SETTINGS };
-
-// --- State ---
-
-let loading = false;
-let lastResults: Recommendation[] = [];
-const selectedRecs: Map<string, Recommendation> = new Map();
-
-// --- Citation Tracking ---
-
-const DOC_KEY = "word-document";
-
-class LocalStorageCitationStorage implements CitationStorage {
-	async load(docKey: string): Promise<TrackedCitation[]> {
-		try {
-			const raw = localStorage.getItem(`incite-citations-${docKey}`);
-			return raw ? JSON.parse(raw) : [];
-		} catch {
-			return [];
-		}
-	}
-
-	async save(docKey: string, citations: TrackedCitation[]): Promise<void> {
-		try {
-			localStorage.setItem(
-				`incite-citations-${docKey}`,
-				JSON.stringify(citations),
-			);
-		} catch {
-			// Ignore storage errors
-		}
-	}
-}
-
-const tracker = new CitationTracker(new LocalStorageCitationStorage(), DOC_KEY);
-
-// --- DOM Helpers ---
-
-function getEl(id: string): HTMLElement {
-	return document.getElementById(id)!;
-}
-
-function escapeHtml(str: string): string {
-	const div = document.createElement("div");
-	div.appendChild(document.createTextNode(str));
-	return div.innerHTML;
-}
-
-// --- API Helpers ---
-
-function getApiUrl(): string {
-	return settings.apiMode === "cloud" ? settings.cloudUrl : settings.localUrl;
-}
-
-function getApiHeaders(): Record<string, string> {
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-		Accept: "application/json",
-	};
-	if (settings.apiMode === "cloud" && settings.apiToken) {
-		headers["Authorization"] = `Bearer ${settings.apiToken}`;
-	}
-	return headers;
-}
-
-async function apiRecommend(
-	query: string,
-	k: number,
-	authorBoost: number,
-): Promise<{ recommendations: Recommendation[]; timing: { total_ms: number } | null }> {
-	const baseUrl = getApiUrl();
-	const endpoint =
-		settings.apiMode === "cloud" ? "/api/v1/recommend" : "/recommend";
-
-	const response = await fetch(`${baseUrl}${endpoint}`, {
-		method: "POST",
-		headers: getApiHeaders(),
-		body: JSON.stringify({
-			query,
-			k,
-			author_boost: authorBoost,
-		}),
-	});
-
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(
-			`API error ${response.status}: ${text || response.statusText}`,
-		);
-	}
-
-	return response.json();
-}
-
-async function apiHealth(): Promise<{
-	ready: boolean;
-	corpus_size?: number;
-	mode?: string;
-}> {
-	const baseUrl = getApiUrl();
-	const endpoint =
-		settings.apiMode === "cloud" ? "/api/v1/health" : "/health";
-
-	const response = await fetch(`${baseUrl}${endpoint}`, {
-		method: "GET",
-		headers: getApiHeaders(),
-	});
-
-	if (!response.ok) {
-		throw new Error(`Health check failed: ${response.status}`);
-	}
-
-	const data = await response.json();
-
-	// Cloud returns {status: "ready"|"processing", corpus_size, mode}
-	// Local returns {ready: boolean, corpus_size, mode}
-	if (settings.apiMode === "cloud") {
-		return {
-			ready: data.status === "ready",
-			corpus_size: data.corpus_size,
-			mode: data.mode,
-		};
-	}
-	return data;
-}
-
-// --- Office.js Entry Point ---
+// --- Office.js Declarations ---
 
 /* global Office, Word */
 declare const Office: {
@@ -201,21 +40,61 @@ declare const Word: {
 interface WordContext {
 	document: {
 		getSelection: () => WordRange;
-		body: { paragraphs: WordParagraphCollection };
+		properties: {
+			customProperties: {
+				getItemOrNullObject: (name: string) => CustomProperty;
+				add: (name: string, value: string) => CustomProperty;
+			};
+		};
 	};
 	sync: () => Promise<void>;
 }
 
+interface CustomProperty {
+	isNullObject: boolean;
+	value: string;
+	load: (options: { select: string }) => CustomProperty;
+}
+
 interface WordRange {
 	text: string;
-	load: (props: string) => void;
 	insertText: (text: string, location: string) => void;
 }
 
-interface WordParagraphCollection {
-	items: Array<{ text: string }>;
-	load: (props: string) => void;
+// --- State ---
+
+let loading = false;
+let lastResults: Recommendation[] = [];
+const selectedRecs: Map<string, Recommendation> = new Map();
+
+// --- Citation Tracking ---
+
+let tracker: CitationTracker | null = null;
+
+async function getOrCreateDocKey(): Promise<string> {
+	return Word.run(async (context) => {
+		const prop = context.document.properties.customProperties.getItemOrNullObject("incite_doc_id");
+		prop.load({ select: "value" });
+		await context.sync();
+
+		if (!prop.isNullObject) {
+			return prop.value;
+		}
+
+		const docId = crypto.randomUUID();
+		context.document.properties.customProperties.add("incite_doc_id", docId);
+		await context.sync();
+		return docId;
+	});
 }
+
+// --- DOM Helpers ---
+
+function getEl(id: string): HTMLElement {
+	return document.getElementById(id)!;
+}
+
+// --- Office.js Entry Point ---
 
 Office.onReady((info) => {
 	if (info.host === Office.HostType.Word) {
@@ -237,12 +116,23 @@ function updateModeVisibility(): void {
 	}
 }
 
-function initApp(): void {
+async function initApp(): Promise<void> {
 	// Load saved settings from localStorage
 	loadSettings();
 
-	// Load citation tracker
-	tracker.load().then(() => renderBibliography());
+	// Initialize per-document citation tracker
+	try {
+		const docKey = await getOrCreateDocKey();
+		tracker = new CitationTracker(new LocalStorageCitationStorage(), docKey);
+		await tracker.load();
+		doRenderBibliography();
+	} catch (err) {
+		console.error("Failed to initialize document tracker:", err);
+		// Fallback to a session-level key
+		tracker = new CitationTracker(new LocalStorageCitationStorage(), "word-fallback");
+		await tracker.load();
+		doRenderBibliography();
+	}
 
 	// Wire up buttons
 	getEl("refreshBtn").addEventListener("click", onRefresh);
@@ -296,12 +186,40 @@ function initApp(): void {
 		}
 	});
 
-	// Insert format
+	// Citation format: dropdown + custom input
+	const formatSelect = getEl("formatSelect") as HTMLSelectElement;
 	const formatInput = getEl("insertFormat") as HTMLInputElement;
-	formatInput.value = settings.insertFormat;
+
+	// Set initial state: match saved format to dropdown or show custom
+	const savedFormat = settings.insertFormat;
+	const matchingOption = Array.from(formatSelect.options).find(
+		(opt) => opt.value === savedFormat
+	);
+	if (matchingOption) {
+		formatSelect.value = savedFormat;
+		formatInput.style.display = "none";
+	} else {
+		formatSelect.value = "custom";
+		formatInput.value = savedFormat;
+		formatInput.style.display = "";
+	}
+
+	formatSelect.addEventListener("change", () => {
+		if (formatSelect.value === "custom") {
+			formatInput.style.display = "";
+			formatInput.focus();
+		} else {
+			formatInput.style.display = "none";
+			settings.insertFormat = formatSelect.value;
+			saveSettings();
+		}
+	});
+
 	formatInput.addEventListener("change", () => {
-		settings.insertFormat = formatInput.value;
-		saveSettings();
+		if (formatSelect.value === "custom") {
+			settings.insertFormat = formatInput.value;
+			saveSettings();
+		}
 	});
 
 	// Show paragraphs toggle
@@ -311,7 +229,7 @@ function initApp(): void {
 		settings.showParagraphs = showParaCheckbox.checked;
 		saveSettings();
 		if (lastResults.length > 0) {
-			renderResults(lastResults);
+			doRenderResults(lastResults);
 		}
 	});
 
@@ -323,32 +241,7 @@ function initApp(): void {
 	setInterval(checkHealth, 30000);
 }
 
-// --- Settings Persistence ---
-
-function loadSettings(): void {
-	try {
-		const saved = localStorage.getItem("incite-settings");
-		if (saved) {
-			const parsed = JSON.parse(saved);
-			// Migrate old apiUrl to localUrl
-			if (parsed.apiUrl && !parsed.localUrl) {
-				parsed.localUrl = parsed.apiUrl;
-				delete parsed.apiUrl;
-			}
-			settings = { ...DEFAULT_SETTINGS, ...parsed };
-		}
-	} catch {
-		// Use defaults
-	}
-}
-
-function saveSettings(): void {
-	try {
-		localStorage.setItem("incite-settings", JSON.stringify(settings));
-	} catch {
-		// Ignore storage errors
-	}
-}
+// --- Settings Panel ---
 
 function toggleSettings(): void {
 	const panel = getEl("settingsPanel");
@@ -360,7 +253,8 @@ function toggleSettings(): void {
 async function checkHealth(): Promise<void> {
 	const statusEl = getEl("status");
 	try {
-		const health = await apiHealth();
+		const client = createClient();
+		const health = await client.health();
 		if (health.ready) {
 			statusEl.textContent = `Connected (${health.corpus_size} papers, ${health.mode} mode)`;
 			statusEl.className = "status connected";
@@ -377,62 +271,6 @@ async function checkHealth(): Promise<void> {
 		}
 		statusEl.className = "status offline";
 	}
-}
-
-// --- Context Extraction from Word ---
-
-async function getContextFromWord(): Promise<{
-	text: string;
-	cursorSentenceIndex: number;
-}> {
-	return Word.run(async (context) => {
-		const selection = context.document.getSelection();
-		selection.load("text");
-
-		const paragraphs = context.document.body.paragraphs;
-		paragraphs.load("text");
-
-		await context.sync();
-
-		const allText = paragraphs.items.map((p) => p.text).join("\n");
-		const selectionText = selection.text;
-
-		// Find cursor position: locate the selection text within the full document
-		let cursorOffset: number;
-		if (selectionText.trim().length > 0) {
-			// Use the start of the selected text
-			const idx = allText.indexOf(selectionText);
-			cursorOffset = idx >= 0 ? idx : allText.length / 2;
-		} else {
-			// No selection -- approximate cursor position from paragraph order.
-			// Word doesn't expose a character offset for the cursor, so we
-			// find the first empty-text paragraph near the selection as a hint.
-			// Fallback: use middle of document.
-			cursorOffset = Math.floor(allText.length / 2);
-
-			// Try to find the paragraph that contains/is adjacent to the cursor
-			// by checking which paragraph the empty selection belongs to.
-			let charPos = 0;
-			for (const p of paragraphs.items) {
-				charPos += p.text.length + 1;
-				if (p.text.length === 0) {
-					// Empty paragraphs are common cursor positions
-					cursorOffset = charPos;
-					break;
-				}
-			}
-		}
-
-		const extracted = extractContext(
-			allText,
-			cursorOffset,
-			settings.contextSentences,
-		);
-		return {
-			text: extracted.text,
-			cursorSentenceIndex: extracted.cursorSentenceIndex,
-		};
-	});
 }
 
 // --- Recommendations ---
@@ -453,7 +291,8 @@ async function onRefresh(): Promise<void> {
 		}
 
 		const cleaned = stripCitations(ctx.text);
-		const response = await apiRecommend(
+		const client = createClient();
+		const response = await client.recommend(
 			cleaned,
 			settings.k,
 			settings.authorBoost,
@@ -464,7 +303,7 @@ async function onRefresh(): Promise<void> {
 		if (lastResults.length === 0) {
 			showEmpty();
 		} else {
-			renderResults(lastResults);
+			doRenderResults(lastResults);
 			renderTiming(response.timing);
 		}
 	} catch (err) {
@@ -488,9 +327,9 @@ async function insertCitation(rec: Recommendation): Promise<void> {
 			selection.insertText(citation, Word.InsertLocation.after);
 			await context.sync();
 		});
-		await tracker.track([rec]);
-		renderBibliography();
-		if (lastResults.length > 0) renderResults(lastResults);
+		if (tracker) await tracker.track([rec]);
+		doRenderBibliography();
+		if (lastResults.length > 0) doRenderResults(lastResults);
 		showStatus(`Inserted: ${citation}`);
 		setTimeout(() => showStatus(""), 2000);
 	} catch (err) {
@@ -507,10 +346,10 @@ async function insertMultiCitation(recs: Recommendation[]): Promise<void> {
 			selection.insertText(citation, Word.InsertLocation.after);
 			await context.sync();
 		});
-		await tracker.track(recs);
+		if (tracker) await tracker.track(recs);
 		selectedRecs.clear();
-		renderBibliography();
-		if (lastResults.length > 0) renderResults(lastResults);
+		doRenderBibliography();
+		if (lastResults.length > 0) doRenderResults(lastResults);
 		showStatus(`Inserted ${recs.length} citations: ${citation}`);
 		setTimeout(() => showStatus(""), 2000);
 	} catch (err) {
@@ -518,7 +357,66 @@ async function insertMultiCitation(recs: Recommendation[]): Promise<void> {
 	}
 }
 
-// --- Rendering ---
+// --- Rendering Delegates ---
+
+/** Render recommendation results into #results. */
+function doRenderResults(results: Recommendation[]): void {
+	const container = getEl("results");
+	renderResults(results, container, {
+		showParagraphs: settings.showParagraphs,
+		selectedRecs,
+		tracker: tracker ?? undefined,
+	}, {
+		onInsert: (rec) => insertCitation(rec),
+		onCopy: (rec, btn) => {
+			const citation = formatCitation(rec, settings.insertFormat);
+			navigator.clipboard.writeText(citation).then(() => {
+				btn.textContent = "Copied!";
+				setTimeout(() => {
+					btn.textContent = "Copy";
+				}, 1500);
+			});
+		},
+		onSelect: (rec, selected) => {
+			if (selected) {
+				selectedRecs.set(rec.paper_id, rec);
+			} else {
+				selectedRecs.delete(rec.paper_id);
+			}
+			renderSelectionBar(container, selectedRecs.size, {
+				onInsertSelected: () => {
+					const recs = Array.from(selectedRecs.values());
+					insertMultiCitation(recs);
+				},
+				onClearSelected: () => {
+					selectedRecs.clear();
+					doRenderResults(lastResults);
+				},
+			});
+		},
+		onInsertSelected: () => {
+			const recs = Array.from(selectedRecs.values());
+			insertMultiCitation(recs);
+		},
+		onClearSelected: () => {
+			selectedRecs.clear();
+			doRenderResults(lastResults);
+		},
+	});
+}
+
+/** Render the bibliography section. */
+function doRenderBibliography(): void {
+	if (!tracker) return;
+	const t = tracker;
+	renderBibliography(t, async (paperId) => {
+		await t.remove(paperId);
+		doRenderBibliography();
+		if (lastResults.length > 0) doRenderResults(lastResults);
+	});
+}
+
+// --- UI State Helpers ---
 
 function setLoading(on: boolean): void {
 	loading = on;
@@ -562,159 +460,6 @@ function showStatus(message: string): void {
 	}
 }
 
-function renderSelectionBar(): void {
-	const existing = document.getElementById("selectionBar");
-	if (existing) existing.remove();
-
-	if (selectedRecs.size === 0) return;
-
-	const bar = document.createElement("div");
-	bar.id = "selectionBar";
-	bar.className = "mc-selection-bar";
-
-	const label = document.createElement("span");
-	label.textContent = `${selectedRecs.size} selected`;
-	bar.appendChild(label);
-
-	const insertBtn = document.createElement("button");
-	insertBtn.className = "mc-insert-btn";
-	insertBtn.textContent = "Insert Selected";
-	insertBtn.addEventListener("click", () => {
-		const recs = Array.from(selectedRecs.values());
-		insertMultiCitation(recs);
-	});
-	bar.appendChild(insertBtn);
-
-	const clearBtn = document.createElement("button");
-	clearBtn.className = "mc-copy-btn";
-	clearBtn.textContent = "Clear";
-	clearBtn.addEventListener("click", () => {
-		selectedRecs.clear();
-		renderResults(lastResults);
-	});
-	bar.appendChild(clearBtn);
-
-	const container = getEl("results");
-	container.insertBefore(bar, container.firstChild);
-}
-
-function renderResults(results: Recommendation[]): void {
-	const container = getEl("results");
-	container.innerHTML = "";
-
-	// Selection bar at the top
-	if (selectedRecs.size > 0) {
-		renderSelectionBar();
-	}
-
-	for (const rec of results) {
-		const card = document.createElement("div");
-		card.className = "mc-result";
-
-		// Header: checkbox + rank + confidence + cited badge
-		const header = document.createElement("div");
-		header.className = "mc-result-header";
-
-		const checkbox = document.createElement("input");
-		checkbox.type = "checkbox";
-		checkbox.className = "mc-select-checkbox";
-		checkbox.checked = selectedRecs.has(rec.paper_id);
-		checkbox.title = "Select for multi-citation";
-		checkbox.addEventListener("change", () => {
-			if (checkbox.checked) {
-				selectedRecs.set(rec.paper_id, rec);
-			} else {
-				selectedRecs.delete(rec.paper_id);
-			}
-			renderSelectionBar();
-		});
-		header.appendChild(checkbox);
-
-		const rank = document.createElement("span");
-		rank.className = "mc-rank";
-		rank.textContent = `${rec.rank}.`;
-		header.appendChild(rank);
-
-		const conf = rec.confidence || 0;
-		const confBadge = document.createElement("span");
-		confBadge.className =
-			"mc-confidence " +
-			(conf >= 0.55
-				? "mc-confidence-high"
-				: conf >= 0.35
-					? "mc-confidence-mid"
-					: "mc-confidence-low");
-		confBadge.textContent = conf.toFixed(2);
-		confBadge.title = `Confidence: ${conf.toFixed(3)}`;
-		header.appendChild(confBadge);
-
-		if (tracker.isTracked(rec.paper_id)) {
-			const citedBadge = document.createElement("span");
-			citedBadge.className = "mc-cited-badge";
-			citedBadge.textContent = "Cited";
-			header.appendChild(citedBadge);
-		}
-
-		card.appendChild(header);
-
-		// Title
-		const title = document.createElement("div");
-		title.className = "mc-title";
-		title.textContent = rec.title || "Untitled";
-		card.appendChild(title);
-
-		// Authors + year
-		if (rec.authors || rec.year) {
-			const meta = document.createElement("div");
-			meta.className = "mc-meta";
-			const parts: string[] = [];
-			if (rec.authors && rec.authors.length > 0) {
-				let names = rec.authors.slice(0, 3).join(", ");
-				if (rec.authors.length > 3) names += " et al.";
-				parts.push(names);
-			}
-			if (rec.year) parts.push(`(${rec.year})`);
-			meta.textContent = parts.join(" ");
-			card.appendChild(meta);
-		}
-
-		// Matched paragraph evidence
-		if (settings.showParagraphs && rec.matched_paragraph) {
-			const para = document.createElement("div");
-			para.className = "mc-paragraph";
-			renderHighlightedText(rec.matched_paragraph, para, 350);
-			card.appendChild(para);
-		}
-
-		// Actions row
-		const actions = document.createElement("div");
-		actions.className = "mc-actions";
-
-		const insertBtn = document.createElement("button");
-		insertBtn.className = "mc-insert-btn";
-		insertBtn.textContent = "+ Insert";
-		insertBtn.addEventListener("click", () => insertCitation(rec));
-		actions.appendChild(insertBtn);
-
-		const copyBtn = document.createElement("button");
-		copyBtn.className = "mc-copy-btn";
-		copyBtn.textContent = "Copy";
-		copyBtn.addEventListener("click", () => {
-			const citation = formatCitation(rec, settings.insertFormat);
-			navigator.clipboard.writeText(citation).then(() => {
-				copyBtn.textContent = "Copied!";
-				setTimeout(() => {
-					copyBtn.textContent = "Copy";
-				}, 1500);
-			});
-		});
-		actions.appendChild(copyBtn);
-
-		card.appendChild(actions);
-		container.appendChild(card);
-	}
-}
-
 function renderTiming(timing: { total_ms: number } | null): void {
 	const timingEl = getEl("timing");
 	if (timing) {
@@ -723,165 +468,4 @@ function renderTiming(timing: { total_ms: number } | null): void {
 	} else {
 		timingEl.style.display = "none";
 	}
-}
-
-/**
- * Render text with **bold** markers converted to <strong> elements.
- * Truncates around the highlighted portion. Matches Google Docs sidebar.
- */
-function renderHighlightedText(
-	text: string,
-	container: HTMLElement,
-	maxLength: number,
-): void {
-	const startBold = text.indexOf("**");
-	const endBold = text.indexOf("**", startBold + 2);
-
-	if (startBold === -1 || endBold === -1) {
-		const truncated = text.length > maxLength;
-		container.textContent = truncated
-			? text.slice(0, maxLength) + "..."
-			: text;
-		return;
-	}
-
-	const highlightEnd = endBold + 2;
-	const highlightLength = highlightEnd - startBold;
-	const available = maxLength - highlightLength;
-	const ctxBefore = Math.floor(available * 0.3);
-	const ctxAfter = available - ctxBefore;
-
-	const sliceStart = Math.max(0, startBold - ctxBefore);
-	const sliceEnd = Math.min(text.length, highlightEnd + ctxAfter);
-	let display = text.slice(sliceStart, sliceEnd);
-
-	if (sliceStart > 0) {
-		const spaceIdx = display.indexOf(" ");
-		if (spaceIdx > 0 && spaceIdx < 20) {
-			display = display.slice(spaceIdx + 1);
-		}
-		display = "..." + display;
-	}
-	if (sliceEnd < text.length) {
-		display = display + "...";
-	}
-
-	const parts = display.split(/(\*\*.+?\*\*)/g);
-	for (const part of parts) {
-		if (
-			part.indexOf("**") === 0 &&
-			part.lastIndexOf("**") === part.length - 2
-		) {
-			const strong = document.createElement("strong");
-			strong.textContent = part.slice(2, -2);
-			container.appendChild(strong);
-		} else if (part) {
-			container.appendChild(document.createTextNode(part));
-		}
-	}
-}
-
-// --- Bibliography ---
-
-function renderBibliography(): void {
-	let section = document.getElementById("bibliographySection");
-	if (!section) {
-		section = document.createElement("div");
-		section.id = "bibliographySection";
-		// Append after the results area
-		const results = getEl("results");
-		results.parentElement!.appendChild(section);
-	}
-	section.innerHTML = "";
-
-	const citations = tracker.getAll();
-	if (citations.length === 0) {
-		section.style.display = "none";
-		return;
-	}
-	section.style.display = "";
-
-	// Collapsible header
-	const header = document.createElement("div");
-	header.className = "mc-bib-header";
-	header.textContent = `Bibliography (${citations.length} citation${citations.length !== 1 ? "s" : ""})`;
-	let expanded = true;
-	const body = document.createElement("div");
-
-	header.addEventListener("click", () => {
-		expanded = !expanded;
-		body.style.display = expanded ? "" : "none";
-		header.classList.toggle("collapsed", !expanded);
-	});
-	section.appendChild(header);
-
-	// Export buttons
-	const exportRow = document.createElement("div");
-	exportRow.className = "mc-bib-export";
-
-	const bibtexBtn = document.createElement("button");
-	bibtexBtn.className = "mc-copy-btn";
-	bibtexBtn.textContent = "BibTeX";
-	bibtexBtn.addEventListener("click", () => {
-		navigator.clipboard.writeText(exportBibTeX(citations)).then(() => {
-			bibtexBtn.textContent = "Copied!";
-			setTimeout(() => { bibtexBtn.textContent = "BibTeX"; }, 1500);
-		});
-	});
-	exportRow.appendChild(bibtexBtn);
-
-	const risBtn = document.createElement("button");
-	risBtn.className = "mc-copy-btn";
-	risBtn.textContent = "RIS";
-	risBtn.addEventListener("click", () => {
-		navigator.clipboard.writeText(exportRIS(citations)).then(() => {
-			risBtn.textContent = "Copied!";
-			setTimeout(() => { risBtn.textContent = "RIS"; }, 1500);
-		});
-	});
-	exportRow.appendChild(risBtn);
-
-	const apaBtn = document.createElement("button");
-	apaBtn.className = "mc-copy-btn";
-	apaBtn.textContent = "Copy APA";
-	apaBtn.addEventListener("click", () => {
-		navigator.clipboard.writeText(exportFormattedText(citations)).then(() => {
-			apaBtn.textContent = "Copied!";
-			setTimeout(() => { apaBtn.textContent = "Copy APA"; }, 1500);
-		});
-	});
-	exportRow.appendChild(apaBtn);
-
-	body.appendChild(exportRow);
-
-	// Citation list
-	for (const cite of citations) {
-		const row = document.createElement("div");
-		row.className = "mc-bib-entry";
-
-		const info = document.createElement("span");
-		info.className = "mc-bib-info";
-		const authorStr =
-			cite.authors.length > 0
-				? cite.authors[0].split(",")[0].split(" ").pop() ?? ""
-				: "";
-		const yearStr = cite.year != null ? ` (${cite.year})` : "";
-		info.textContent = `${authorStr}${yearStr} - ${cite.title}`;
-		row.appendChild(info);
-
-		const removeBtn = document.createElement("button");
-		removeBtn.className = "mc-remove-btn";
-		removeBtn.textContent = "x";
-		removeBtn.title = "Remove from bibliography";
-		removeBtn.addEventListener("click", async () => {
-			await tracker.remove(cite.paper_id);
-			renderBibliography();
-			if (lastResults.length > 0) renderResults(lastResults);
-		});
-		row.appendChild(removeBtn);
-
-		body.appendChild(row);
-	}
-
-	section.appendChild(body);
 }

@@ -26,7 +26,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from incite.embeddings.stores import FAISSStore
 
 logger = logging.getLogger(__name__)
 
@@ -776,7 +779,6 @@ class InCiteAgent:
         parts = re.split(r'(?<=[.!?])\s+(?=[A-Z"])', processed)
         return [s.replace(placeholder, ". ").strip() for s in parts if s.strip()]
 
-
     def _find_neural_store(self) -> Optional["FAISSStore"]:
         """Extract the neural FAISSStore from the retriever chain."""
         r = self._retriever
@@ -802,7 +804,6 @@ class InCiteAgent:
         Looks up the paper's vector in the store — supports both FAISS (via
         index reconstruct) and pgvector (via get_embedding method).
         """
-        import numpy as np
 
         # Prefer explicit paper store (set for paragraph mode), fall back to retriever chain
         store = self._paper_store or self._find_neural_store()
@@ -854,17 +855,19 @@ class InCiteAgent:
                     abstract_preview = paper.abstract[:300]
                     if len(paper.abstract) > 300:
                         abstract_preview += "..."
-                recommendations.append(AgentRecommendation(
-                    paper_id=pid,
-                    rank=rank + 1,
-                    score=score,
-                    title=paper.title,
-                    authors=paper.authors,
-                    year=paper.year,
-                    abstract=abstract_preview,
-                    bibtex_key=paper.bibtex_key,
-                    confidence=min(1.0, max(0.0, score)),
-                ))
+                recommendations.append(
+                    AgentRecommendation(
+                        paper_id=pid,
+                        rank=rank + 1,
+                        score=score,
+                        title=paper.title,
+                        authors=paper.authors,
+                        year=paper.year,
+                        abstract=abstract_preview,
+                        bibtex_key=paper.bibtex_key,
+                        confidence=min(1.0, max(0.0, score)),
+                    )
+                )
 
         total_ms = (time.perf_counter() - start_time) * 1000
 

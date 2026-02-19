@@ -161,6 +161,42 @@ class ExperimentLogger:
 
         return None
 
+    def delete_run(self, run_id: str) -> bool:
+        """Delete a specific run by ID.
+
+        Removes the run from the JSONL log and deletes any per-query data.
+
+        Args:
+            run_id: The run ID (or prefix)
+
+        Returns:
+            True if a run was deleted, False if not found
+        """
+        if not self.log_path.exists():
+            return False
+
+        lines = self.log_path.read_text().splitlines()
+        kept = []
+        deleted = False
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            if data["id"].startswith(run_id):
+                deleted = True
+                # Remove per-query data if it exists
+                per_query_file = self.log_path.parent / "per_query" / f"{data['id']}.jsonl"
+                if per_query_file.exists():
+                    per_query_file.unlink()
+            else:
+                kept.append(line)
+
+        if deleted:
+            self.log_path.write_text("\n".join(kept) + "\n" if kept else "")
+
+        return deleted
+
     def compare(self, run_ids: list[str]) -> str:
         """Compare multiple runs in a formatted table.
 

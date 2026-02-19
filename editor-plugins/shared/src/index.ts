@@ -1,11 +1,21 @@
 export type {
+	ApiMode,
 	InCiteSettings,
+	ClientConfig,
 	Recommendation,
 	EvidenceSnippet,
 	TimingInfo,
 	RecommendResponse,
 	HealthResponse,
+	PaperMetadata,
+	SavePapersRequest,
+	SavedPaperResult,
+	SavePapersResponse,
+	LibraryCheckResult,
+	Collection,
+	Tag,
 } from "./types";
+export { DEFAULT_SETTINGS, getActiveUrl } from "./types";
 
 export type { HttpTransport } from "./api-client";
 export { InCiteClient, FetchTransport } from "./api-client";
@@ -17,3 +27,15 @@ export type { CitationStyle } from "./format";
 export { CitationTracker, recommendationToTracked } from "./citation-tracker";
 export type { TrackedCitation, CitationStorage } from "./citation-tracker";
 export { exportBibTeX, exportRIS, exportFormattedText, escapeLaTeX } from "./bibliography";
+
+export type { UIClassMap, RenderResultOptions } from "./ui-helpers";
+export {
+	DEFAULT_CLASS_MAP,
+	escapeHtml,
+	escapeAttr,
+	confidenceLevel,
+	renderHighlightedTextHTML,
+	renderEvidenceHTML,
+	renderResultCardHTML,
+	renderBibliographyHTML,
+} from "./ui-helpers";

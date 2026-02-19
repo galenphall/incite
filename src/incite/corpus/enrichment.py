@@ -1,9 +1,11 @@
 """BibTeX parsing and metadata enrichment pipeline."""
 
 import hashlib
+import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from tqdm import tqdm
 
@@ -11,6 +13,8 @@ from incite.corpus.loader import load_corpus, save_corpus
 from incite.corpus.openalex import OpenAlexClient
 from incite.corpus.semantic_scholar import SemanticScholarClient
 from incite.models import Paper
+
+logger = logging.getLogger(__name__)
 
 
 class BibTeXParser:
@@ -104,9 +108,7 @@ class BibTeXParser:
         if journal_field:
             journal = BibTeXParser._clean_latex(journal_field.value)
         elif entry.fields_dict.get("booktitle"):
-            journal = BibTeXParser._clean_latex(
-                entry.fields_dict["booktitle"].value
-            )
+            journal = BibTeXParser._clean_latex(entry.fields_dict["booktitle"].value)
 
         return {
             "key": entry.key,
@@ -173,7 +175,6 @@ class BibTeXParser:
         return doi if doi else None
 
 
-
 def bibtex_entries_to_papers(entries: list[dict]) -> list[Paper]:
     """Convert parsed BibTeX entry dicts to Paper objects.
 
@@ -210,15 +211,12 @@ def bibtex_entries_to_papers(entries: list[dict]) -> list[Paper]:
     return papers
 
 
-
 def _word_set(s: str) -> set[str]:
     """Tokenize into lowercase alphanumeric words >= 3 chars."""
     return {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) >= 3}
 
 
-def match_pdfs_to_papers(
-    pdf_filenames: list[str], papers: list[Paper]
-) -> dict[str, str]:
+def match_pdfs_to_papers(pdf_filenames: list[str], papers: list[Paper]) -> dict[str, str]:
     """Match uploaded PDF filenames to papers using heuristics.
 
     Tries five strategies in order:
@@ -493,6 +491,132 @@ class MetadataEnricher:
             papers.append(paper)
 
         return papers
+
+
+@dataclass(frozen=True)
+class EnrichmentResult:
+    """Summary of abstract enrichment results."""
+
+    total_missing: int
+    found_by_doi: int
+    found_by_title: int
+    still_missing: int
+
+
+# Cap title-based lookups to bound latency (~1s each)
+_TITLE_SEARCH_CAP = 50
+
+
+def enrich_abstracts_batch(
+    papers: list[Paper],
+    s2_client: SemanticScholarClient | None = None,
+    openalex_client: OpenAlexClient | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+) -> EnrichmentResult:
+    """Fetch missing abstracts from Semantic Scholar and OpenAlex.
+
+    Modifies Paper.abstract in-place for papers where an abstract is found.
+    Uses batch APIs to minimize request count.
+
+    Args:
+        papers: List of Paper objects (mutated in-place)
+        s2_client: Semantic Scholar client (for batch + title search)
+        openalex_client: OpenAlex client (DOI batch fallback)
+        progress_callback: Optional callback for status messages
+
+    Returns:
+        EnrichmentResult summarizing what was found
+    """
+    missing = [p for p in papers if not p.abstract]
+    if not missing:
+        return EnrichmentResult(total_missing=0, found_by_doi=0, found_by_title=0, still_missing=0)
+
+    total_missing = len(missing)
+    found_by_doi = 0
+    found_by_title = 0
+
+    def _report(msg: str) -> None:
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+
+    _report(f"Abstract enrichment: {total_missing} papers missing abstracts")
+
+    # --- DOI path: batch lookups ---
+    with_doi = [p for p in missing if p.doi]
+    still_need_doi: list[Paper] = []
+
+    if with_doi and s2_client:
+        _report(f"Looking up {len(with_doi)} papers by DOI (Semantic Scholar)...")
+        doi_ids = [f"DOI:{p.doi}" for p in with_doi]
+        s2_results = s2_client.get_papers_batch(doi_ids)
+
+        for paper, input_id in zip(with_doi, doi_ids):
+            found = s2_results.get(input_id)
+            if found and found.abstract:
+                paper.abstract = found.abstract
+                found_by_doi += 1
+            else:
+                still_need_doi.append(paper)
+    else:
+        still_need_doi = list(with_doi)
+
+    # OpenAlex fallback for DOI papers S2 missed
+    if still_need_doi and openalex_client:
+        _report(f"OpenAlex fallback for {len(still_need_doi)} papers...")
+        fallback_dois = [p.doi for p in still_need_doi]
+        oa_results = openalex_client.get_works_batch_by_doi(fallback_dois)
+
+        for paper in still_need_doi:
+            found = oa_results.get(paper.doi.lower())
+            if found and found.abstract:
+                paper.abstract = found.abstract
+                found_by_doi += 1
+
+    # --- Title path: individual S2 search for no-DOI papers ---
+    without_doi = [p for p in missing if not p.doi and not p.abstract]
+    if without_doi and s2_client:
+        capped = without_doi[:_TITLE_SEARCH_CAP]
+        if len(without_doi) > _TITLE_SEARCH_CAP:
+            _report(
+                f"Title search: {len(without_doi)} no-DOI papers, capped at {_TITLE_SEARCH_CAP}"
+            )
+        else:
+            _report(f"Title search for {len(capped)} no-DOI papers...")
+
+        for paper in capped:
+            try:
+                results = s2_client.search_papers(paper.title, limit=3)
+                for candidate in results:
+                    if not candidate.abstract:
+                        continue
+                    # Fuzzy title match: Jaccard similarity on word sets
+                    paper_words = _word_set(paper.title)
+                    candidate_words = _word_set(candidate.title)
+                    if not paper_words or not candidate_words:
+                        continue
+                    jaccard = len(paper_words & candidate_words) / len(
+                        paper_words | candidate_words
+                    )
+                    if jaccard >= 0.7:
+                        paper.abstract = candidate.abstract
+                        found_by_title += 1
+                        break
+            except Exception:
+                logger.debug("Title search failed for: %s", paper.title, exc_info=True)
+
+    still_missing = sum(1 for p in missing if not p.abstract)
+    result = EnrichmentResult(
+        total_missing=total_missing,
+        found_by_doi=found_by_doi,
+        found_by_title=found_by_title,
+        still_missing=still_missing,
+    )
+    _report(
+        f"Abstract enrichment: {found_by_doi} by DOI, {found_by_title} by title, "
+        f"{still_missing} still missing"
+    )
+    return result
 
 
 def enrich_bibtex_to_corpus(

@@ -8,17 +8,18 @@ const prod = process.argv[2] === "production";
 
 esbuild
 	.build({
-		entryPoints: ["src/sidebar.ts"],
+		entryPoints: ["src/index.ts"],
 		bundle: true,
 		alias: {
 			"@incite/shared": path.resolve(__dirname, "../shared/src/index.ts"),
 		},
-		format: "iife",       // Browser-compatible for Google Docs sidebar
+		format: "iife",
+		globalName: "InciteZotero",
 		target: "es2020",
 		logLevel: "info",
 		sourcemap: prod ? false : "inline",
 		treeShaking: true,
-		outfile: "dist/sidebar.js",
+		outfile: "addon/content/scripts/index.js",
 		minify: prod,
 	})
 	.catch(() => process.exit(1));

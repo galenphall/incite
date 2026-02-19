@@ -14,8 +14,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       navigator.clipboard.writeText(message.citation).then(() => {
         showToast(`Copied "${message.citation}" -- paste with Cmd/Ctrl+V`);
         sendResponse({ type: "INSERT_RESULT", success: true, method: "clipboard" });
-      }).catch(() => {
-        sendResponse({ type: "INSERT_RESULT", success: false });
+      }).catch((err) => {
+        console.error("Failed to copy citation to clipboard:", err);
+        sendResponse({ type: "INSERT_RESULT", success: false, error: err?.message });
       });
       return true; // Async response
     }
@@ -46,8 +47,8 @@ async function extractText(): Promise<{ text?: string; error?: string }> {
     if (clipboardText && clipboardText.length > 0) {
       return { text: clipboardText };
     }
-  } catch {
-    // Clipboard extraction failed, fall through to error
+  } catch (err) {
+    console.debug("Clipboard extraction failed:", err);
   }
 
   return {
@@ -66,8 +67,8 @@ async function extractViaClipboard(): Promise<string> {
   let savedClipboard: string | null = null;
   try {
     savedClipboard = await navigator.clipboard.readText();
-  } catch {
-    // Can't read clipboard — that's OK, we just won't restore
+  } catch (err) {
+    console.debug("Could not read clipboard to save:", err);
   }
 
   // Trigger copy — Google Docs intercepts this even in canvas mode
@@ -83,8 +84,8 @@ async function extractViaClipboard(): Promise<string> {
   if (savedClipboard !== null && savedClipboard !== copiedText) {
     try {
       await navigator.clipboard.writeText(savedClipboard);
-    } catch {
-      // Restore failed — not critical
+    } catch (err) {
+      console.debug("Clipboard restore failed:", err);
     }
   }
 

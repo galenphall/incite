@@ -1,16 +1,26 @@
 {
   "manifest_version": 3,
   "name": "InCite — Citation Recommendations",
-  "version": "0.1.0",
-  "description": "AI-powered citation recommendations for Google Docs and Overleaf",
+  "version": "0.2.0",
+  "description": "AI-powered citation recommendations and paper saving for Google Docs and Overleaf",
   "commands": {
     "trigger-recommendations": {
       "suggested_key": {
         "default": "Alt+Shift+M",
-        "mac": "Alt+Shift+M"
+        "mac": "MacCtrl+Shift+M"
       },
       "description": "Get citation recommendations"
+    },
+    "save-to-library": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "MacCtrl+Shift+S"
+      },
+      "description": "Save paper to library"
     }
+  },
+  "action": {
+    "default_popup": "popup/popup.html"
   },
   "background": {
     "service_worker": "dist/service-worker.js"
@@ -35,13 +45,27 @@
       "js": ["dist/overleaf-main.js"],
       "run_at": "document_idle",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://arxiv.org/*",
+        "*://scholar.google.com/*",
+        "*://scholar.google.co.uk/*",
+        "*://www.semanticscholar.org/*",
+        "*://www.biorxiv.org/content/*",
+        "*://www.medrxiv.org/content/*",
+        "*://pubmed.ncbi.nlm.nih.gov/*"
+      ],
+      "js": ["dist/translator-runner.js"],
+      "run_at": "document_idle"
     }
   ],
   "options_page": "options/options.html",
-  "permissions": ["storage", "sidePanel", "activeTab", "clipboardWrite", "clipboardRead"],
+  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "clipboardWrite", "clipboardRead", "scripting", "contextMenus"],
   "host_permissions": [
     "http://localhost:8230/*",
-    "https://inciteref.com/*"
+    "https://inciteref.com/*",
+    "https://api.semanticscholar.org/*"
   ],
   "icons": {
     "16": "icons/icon16.png",

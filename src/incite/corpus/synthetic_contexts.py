@@ -6,6 +6,7 @@ Supports both batch API and threaded generation modes.
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -19,6 +20,8 @@ from tqdm import tqdm
 from incite.corpus.synthetic_db import SyntheticDB
 from incite.models import CitationContext, Paper
 from incite.utils import DEFAULT_LLM_MODEL
+
+logger = logging.getLogger(__name__)
 
 VALID_TYPES = {"background", "methods", "results", "comparison", "motivation"}
 
@@ -105,6 +108,13 @@ def parse_response(paper: Paper, response_text: str) -> list[dict]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        snippet = text[:200] if len(text) > 200 else text
+        logger.warning(
+            "Malformed LLM JSON for paper %s (%s): %s",
+            paper.id,
+            paper.title[:60],
+            snippet,
+        )
         return []
 
     contexts_raw = data.get("contexts", [])
@@ -171,6 +181,13 @@ def parse_moderate_response(paper: Paper, response_text: str) -> list[dict]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        snippet = text[:200] if len(text) > 200 else text
+        logger.warning(
+            "Malformed LLM JSON for paper %s (%s): %s",
+            paper.id,
+            paper.title[:60],
+            snippet,
+        )
         return []
 
     contexts_raw = data.get("contexts", [])

@@ -8,7 +8,6 @@ import pytest
 from incite.embeddings.base import BaseEmbedder
 from incite.models import Chunk, Paper
 
-
 # ---------------------------------------------------------------------------
 # E2E cloud test configuration
 # ---------------------------------------------------------------------------
@@ -25,6 +24,11 @@ def pytest_addoption(parser):
         "--api-key",
         default="",
         help="API key for authenticated endpoints (default: empty = no auth)",
+    )
+    parser.addoption(
+        "--invite-code",
+        default="",
+        help="Invite code for signup during e2e tests (default: empty)",
     )
 
 
@@ -47,6 +51,12 @@ def api_headers(api_key):
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
+
+
+@pytest.fixture(scope="session")
+def invite_code(request):
+    """Invite code for signup during e2e tests."""
+    return request.config.getoption("--invite-code")
 
 
 # ---------------------------------------------------------------------------
@@ -149,18 +159,69 @@ def sample_paper_dict():
 # ---------------------------------------------------------------------------
 
 _CHUNKS = [
-    Chunk(id="climate_1::chunk_0", paper_id="climate_1", text="Sea levels are rising globally.", parent_text="Sea levels are rising globally. This is caused by thermal expansion and ice sheet melt."),
-    Chunk(id="climate_1::chunk_1", paper_id="climate_1", text="Thermal expansion causes ocean volume increase."),
-    Chunk(id="climate_2::chunk_0", paper_id="climate_2", text="Sea surface temperatures have risen by 0.8C.", parent_text="Sea surface temperatures have risen by 0.8C. Oceanic heat content continues to grow."),
-    Chunk(id="climate_2::chunk_1", paper_id="climate_2", text="Ocean heat content measurements from Argo floats."),
-    Chunk(id="climate_3::chunk_0", paper_id="climate_3", text="General circulation models simulate atmospheric dynamics."),
-    Chunk(id="climate_3::chunk_1", paper_id="climate_3", text="Emission scenarios drive future climate projections."),
-    Chunk(id="climate_4::chunk_0", paper_id="climate_4", text="Coastal communities face increasing flood risk."),
-    Chunk(id="climate_4::chunk_1", paper_id="climate_4", text="Storm surge combined with sea level rise amplifies flooding."),
-    Chunk(id="nlp_1::chunk_0", paper_id="nlp_1", text="Deep learning models achieve state-of-the-art NLP performance.", parent_text="Deep learning models achieve state-of-the-art NLP performance. Recurrent and transformer architectures dominate."),
-    Chunk(id="nlp_1::chunk_1", paper_id="nlp_1", text="Word embeddings capture semantic relationships between words."),
-    Chunk(id="nlp_2::chunk_0", paper_id="nlp_2", text="Transformers use self-attention for parallel sequence processing."),
-    Chunk(id="nlp_2::chunk_1", paper_id="nlp_2", text="Multi-head attention enables learning diverse representations."),
+    Chunk(
+        id="climate_1::chunk_0",
+        paper_id="climate_1",
+        text="Sea levels are rising globally.",
+        parent_text="Sea levels are rising globally. This is caused by thermal expansion and ice sheet melt.",
+    ),
+    Chunk(
+        id="climate_1::chunk_1",
+        paper_id="climate_1",
+        text="Thermal expansion causes ocean volume increase.",
+    ),
+    Chunk(
+        id="climate_2::chunk_0",
+        paper_id="climate_2",
+        text="Sea surface temperatures have risen by 0.8C.",
+        parent_text="Sea surface temperatures have risen by 0.8C. Oceanic heat content continues to grow.",
+    ),
+    Chunk(
+        id="climate_2::chunk_1",
+        paper_id="climate_2",
+        text="Ocean heat content measurements from Argo floats.",
+    ),
+    Chunk(
+        id="climate_3::chunk_0",
+        paper_id="climate_3",
+        text="General circulation models simulate atmospheric dynamics.",
+    ),
+    Chunk(
+        id="climate_3::chunk_1",
+        paper_id="climate_3",
+        text="Emission scenarios drive future climate projections.",
+    ),
+    Chunk(
+        id="climate_4::chunk_0",
+        paper_id="climate_4",
+        text="Coastal communities face increasing flood risk.",
+    ),
+    Chunk(
+        id="climate_4::chunk_1",
+        paper_id="climate_4",
+        text="Storm surge combined with sea level rise amplifies flooding.",
+    ),
+    Chunk(
+        id="nlp_1::chunk_0",
+        paper_id="nlp_1",
+        text="Deep learning models achieve state-of-the-art NLP performance.",
+        parent_text="Deep learning models achieve state-of-the-art NLP performance. Recurrent and transformer architectures dominate.",
+    ),
+    Chunk(
+        id="nlp_1::chunk_1",
+        paper_id="nlp_1",
+        text="Word embeddings capture semantic relationships between words.",
+    ),
+    Chunk(
+        id="nlp_2::chunk_0",
+        paper_id="nlp_2",
+        text="Transformers use self-attention for parallel sequence processing.",
+    ),
+    Chunk(
+        id="nlp_2::chunk_1",
+        paper_id="nlp_2",
+        text="Multi-head attention enables learning diverse representations.",
+    ),
 ]
 
 

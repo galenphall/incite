@@ -118,7 +118,8 @@ def _extract_largest_font_text(pdf_path: Path) -> Optional[str]:
                         best_text = text
 
         return best_text
-    except Exception:
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning("Failed to extract font text from %s: %s", pdf_path, e)
         return None
 
 
@@ -174,7 +175,12 @@ def extract_pdf_metadata(pdf_path: Path) -> dict:
         doc = fitz.open(pdf_path)
         meta = doc.metadata or {}
         doc.close()
-    except Exception:
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(
+            "Failed to read PDF metadata from %s: %s; falling back to filename",
+            pdf_path,
+            e,
+        )
         return {
             "title": _clean_filename_title(pdf_path.name),
             "authors": [],

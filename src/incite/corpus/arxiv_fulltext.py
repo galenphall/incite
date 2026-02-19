@@ -8,6 +8,7 @@ Rate limit: ~3 seconds between requests (arXiv policy).
 
 import gzip
 import io
+import logging
 import re
 import tarfile
 import time
@@ -17,6 +18,8 @@ import requests
 from tqdm import tqdm
 
 from incite.models import Paper
+
+logger = logging.getLogger(__name__)
 
 ARXIV_EPRINT_URL = "https://export.arxiv.org/e-print/{arxiv_id}"
 REQUEST_DELAY = 3.0  # seconds between requests (arXiv rate limit)
@@ -37,8 +40,13 @@ def _download_source(arxiv_id: str, timeout: int = 30) -> Optional[bytes]:
         resp = requests.get(url, timeout=timeout)
         if resp.status_code == 200:
             return resp.content
+        logger.debug("arXiv download returned status %d for %s", resp.status_code, arxiv_id)
         return None
-    except requests.RequestException:
+    except requests.Timeout:
+        logger.warning("arXiv download timed out for %s", arxiv_id)
+        return None
+    except requests.RequestException as e:
+        logger.warning("arXiv download failed for %s: %s", arxiv_id, e)
         return None
 
 
@@ -74,14 +82,14 @@ def _extract_latex(content: bytes) -> Optional[str]:
                 latex = tar.extractfile(tf).read().decode("utf-8", errors="replace")
                 if r"\begin{document}" in latex:
                     return latex
-            except Exception:
+            except (OSError, UnicodeDecodeError, AttributeError):
                 continue
 
         # Fallback: use the largest .tex file
         tex_files.sort(key=lambda x: x.size, reverse=True)
         try:
             return tar.extractfile(tex_files[0]).read().decode("utf-8", errors="replace")
-        except Exception:
+        except (OSError, UnicodeDecodeError, AttributeError):
             return None
     except (tarfile.TarError, EOFError):
         pass
@@ -100,7 +108,7 @@ def _extract_latex(content: bytes) -> Optional[str]:
         latex = content.decode("utf-8", errors="replace")
         if "\\" in latex and len(latex) > 100:
             return latex
-    except Exception:
+    except UnicodeDecodeError:
         pass
 
     return None

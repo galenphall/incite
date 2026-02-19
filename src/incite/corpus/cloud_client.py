@@ -130,8 +130,8 @@ class CloudProcessingClient:
             # Try to clean up the job on failure
             try:
                 self._delete_job(job_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to clean up job %s: %s", job_id, e)
             raise
 
     def _create_job(self, papers: list, embedder: str) -> str:
@@ -354,8 +354,8 @@ class CloudProcessingClient:
                 headers=self._headers(),
                 timeout=10,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to delete job %s: %s", job_id, e)
 
 
 class WebUploadClient:
@@ -438,8 +438,8 @@ class WebUploadClient:
             )
             if resp.status_code == 200:
                 return set(resp.json().get("pdfs", []))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to query uploaded PDFs: %s", e)
         return set()
 
     def _upload_metadata(self, papers: list) -> dict:

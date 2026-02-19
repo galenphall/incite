@@ -86,6 +86,69 @@ def apply_author_boost(
                     break  # Only boost once per paper
 
 
+def apply_graph_boost(
+    all_results: dict[str, dict],
+    papers: dict[str, Paper],
+    graph_metrics: dict[str, dict[str, float]],
+    doi_to_s2: dict[str, str],
+    pagerank_boost: float = 1.15,
+    cocitation_boost: float = 1.10,
+) -> None:
+    """Apply citation graph-based boosting to fused results (in-place).
+
+    Only boosts papers whose graph scores exceed the 75th percentile of
+    all scored papers in the result set, to avoid noisy small boosts.
+
+    Args:
+        all_results: Dict mapping paper_id -> {"total_score": float, "scores": dict}
+        papers: Dict mapping paper_id -> Paper
+        graph_metrics: {"pagerank": {s2_id: score}, "cocitation": {s2_id: score}}
+        doi_to_s2: Mapping from DOI to S2 ID
+        pagerank_boost: Score multiplier for high-PageRank papers
+        cocitation_boost: Score multiplier for high co-citation papers
+    """
+    if not graph_metrics:
+        return
+
+    pr_scores = graph_metrics.get("pagerank", {})
+    cc_scores = graph_metrics.get("cocitation", {})
+
+    if not pr_scores and not cc_scores:
+        return
+
+    # Map paper_id -> s2_id via DOI
+    paper_s2_map: dict[str, str] = {}
+    for paper_id in all_results:
+        paper = papers.get(paper_id)
+        if paper and paper.doi:
+            s2_id = doi_to_s2.get(paper.doi)
+            if s2_id:
+                paper_s2_map[paper_id] = s2_id
+
+    # Collect scores for threshold computation
+    pr_vals = [pr_scores.get(s2, 0.0) for s2 in paper_s2_map.values() if pr_scores.get(s2, 0.0) > 0]
+    cc_vals = [cc_scores.get(s2, 0.0) for s2 in paper_s2_map.values() if cc_scores.get(s2, 0.0) > 0]
+
+    pr_threshold = sorted(pr_vals)[int(len(pr_vals) * 0.75)] if len(pr_vals) >= 4 else 0.0
+    cc_threshold = sorted(cc_vals)[int(len(cc_vals) * 0.75)] if len(cc_vals) >= 4 else 0.0
+
+    for paper_id, data in all_results.items():
+        s2_id = paper_s2_map.get(paper_id)
+        if not s2_id:
+            continue
+
+        pr = pr_scores.get(s2_id, 0.0)
+        cc = cc_scores.get(s2_id, 0.0)
+
+        if pr > pr_threshold and pagerank_boost > 1.0:
+            data["total_score"] *= pagerank_boost
+            data["scores"]["pagerank_boost"] = round(pr, 4)
+
+        if cc > cc_threshold and cocitation_boost > 1.0:
+            data["total_score"] *= cocitation_boost
+            data["scores"]["cocitation_boost"] = round(cc, 4)
+
+
 def _normalize_title(title: str) -> str:
     """Normalize a paper title for deduplication.
 

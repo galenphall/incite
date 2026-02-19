@@ -107,6 +107,7 @@ class FineTunedGraniteEmbedder(BaseEmbedder):
                 str(path),
                 device=self.device,
             )
+            self._model.max_seq_length = 512
             self._dimension = self._model.get_sentence_embedding_dimension()
 
     @property
@@ -262,5 +263,134 @@ class OnnxMiniLMEmbedder(BaseEmbedder):
             embeddings = embeddings / norms
 
             all_embeddings.append(embeddings)
+
+        return np.vstack(all_embeddings).astype(np.float32)
+
+
+class OnnxGraniteEmbedder(BaseEmbedder):
+    """ONNX-accelerated Granite-small-R2 embedder for faster CPU inference.
+
+    Uses optimum.onnxruntime for 2-3x speedup over PyTorch on CPU.
+    Asymmetric prefixes: 'query: ' for queries, 'passage: ' for documents.
+    Requires: pip install optimum[onnxruntime]
+
+    Export the trained model first with scripts/export_granite_onnx.py.
+    """
+
+    DEFAULT_ONNX_PATH = "models/granite-citation-v6/onnx"
+
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        batch_size: int = 64,
+    ):
+        super().__init__()
+        self.model_path = model_path or self.DEFAULT_ONNX_PATH
+        self.batch_size = batch_size
+        self._model = None
+        self._tokenizer = None
+        self._dimension: Optional[int] = None
+
+    def _load_model(self):
+        if self._model is not None:
+            return
+
+        from optimum.onnxruntime import ORTModelForFeatureExtraction
+        from transformers import AutoTokenizer
+
+        path = Path(self.model_path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"ONNX model not found at {path}. "
+                f"Export with: python scripts/export_granite_onnx.py"
+            )
+
+        self._tokenizer = AutoTokenizer.from_pretrained(str(path))
+        self._model = ORTModelForFeatureExtraction.from_pretrained(str(path))
+        self._dimension = 384
+
+    @property
+    def dimension(self) -> int:
+        if self._dimension is None:
+            self._load_model()
+        return self._dimension
+
+    @staticmethod
+    def _cls_pooling(model_output) -> np.ndarray:
+        """CLS token pooling (matches Granite's pooling config)."""
+        token_embeddings = model_output[0]
+        if hasattr(token_embeddings, "numpy"):
+            token_embeddings = token_embeddings.numpy()
+        return token_embeddings[:, 0, :]
+
+    def _encode_batch(self, texts: list[str]) -> np.ndarray:
+        """Encode a batch of texts through the ONNX model."""
+        encoded = self._tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="np",
+        )
+        outputs = self._model(**encoded)
+        embeddings = self._cls_pooling(outputs)
+
+        # L2 normalize
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        return embeddings / norms
+
+    def embed(self, texts: list[str], show_progress: bool = False) -> np.ndarray:
+        """Embed documents (prefixed with 'passage: ')."""
+        self._load_model()
+
+        if len(texts) == 0:
+            return np.array([]).reshape(0, self.dimension)
+
+        prefixed = [f"passage: {t}" for t in texts]
+
+        all_embeddings = []
+        iterator = range(0, len(prefixed), self.batch_size)
+        if show_progress:
+            from tqdm import tqdm
+
+            total = len(prefixed) // self.batch_size + 1
+            iterator = tqdm(iterator, desc="ONNX encoding", total=total)
+
+        for i in iterator:
+            batch = prefixed[i : i + self.batch_size]
+            all_embeddings.append(self._encode_batch(batch))
+
+        return np.vstack(all_embeddings).astype(np.float32)
+
+    def embed_query(self, query: str) -> np.ndarray:
+        """Embed a query (prefixed with 'query: ')."""
+        if query in self._query_cache:
+            return self._query_cache[query]
+        self._load_model()
+
+        result = self._encode_batch([f"query: {query}"])
+        return result[0]
+
+    def embed_queries(self, queries: list[str], show_progress: bool = False) -> np.ndarray:
+        """Embed a batch of queries (prefixed with 'query: ')."""
+        self._load_model()
+
+        if len(queries) == 0:
+            return np.array([]).reshape(0, self.dimension)
+
+        prefixed = [f"query: {q}" for q in queries]
+
+        all_embeddings = []
+        iterator = range(0, len(prefixed), self.batch_size)
+        if show_progress:
+            from tqdm import tqdm
+
+            total = len(prefixed) // self.batch_size + 1
+            iterator = tqdm(iterator, desc="ONNX encoding", total=total)
+
+        for i in iterator:
+            batch = prefixed[i : i + self.batch_size]
+            all_embeddings.append(self._encode_batch(batch))
 
         return np.vstack(all_embeddings).astype(np.float32)

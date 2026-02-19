@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import type { Recommendation, InCiteSettings, TrackedCitation } from "./types";
+import { confidenceLevel } from "./types";
 
 export const VIEW_TYPE_INCITE = "incite-sidebar";
 
@@ -135,6 +136,13 @@ export class InCiteSidebarView extends ItemView {
 		// Selection action row (visible when selections > 0)
 		this.renderSelectionBar(container);
 
+		// Toggle has-selection class to hide individual insert buttons
+		if (this.selectedRecs.size > 0) {
+			(container as HTMLElement).classList.add("has-selection");
+		} else {
+			(container as HTMLElement).classList.remove("has-selection");
+		}
+
 		const list = container.createEl("div", { cls: "mayacite-results" });
 
 		for (const rec of this.results) {
@@ -162,12 +170,8 @@ export class InCiteSidebarView extends ItemView {
 					text: `${rec.rank}.`,
 				});
 				const conf = rec.confidence ?? 0;
-				const confClass =
-					conf >= 0.55
-						? "mayacite-confidence-high"
-						: conf >= 0.35
-							? "mayacite-confidence-mid"
-							: "mayacite-confidence-low";
+				const level = confidenceLevel(conf);
+				const confClass = `mayacite-confidence-${level}`;
 				el.createEl("span", {
 					cls: `mayacite-confidence ${confClass}`,
 					text: conf.toFixed(2),
@@ -280,16 +284,18 @@ export class InCiteSidebarView extends ItemView {
 
 	/** Update just the selection bar without full re-render. */
 	private renderSelectionBarUpdate(): void {
-		const container = this.containerEl.children[1];
+		const container = this.containerEl.children[1] as HTMLElement;
 		const bar = container.querySelector("[data-selection-bar]") as HTMLElement | null;
 		if (!bar) return;
 
 		if (this.selectedRecs.size > 0) {
 			bar.style.display = "";
+			container.classList.add("has-selection");
 			const countEl = bar.querySelector(".mayacite-selection-count");
 			if (countEl) countEl.textContent = `${this.selectedRecs.size} selected`;
 		} else {
 			bar.style.display = "none";
+			container.classList.remove("has-selection");
 		}
 	}
 

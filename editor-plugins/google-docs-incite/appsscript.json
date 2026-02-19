@@ -6,6 +6,23 @@
   "oauthScopes": [
     "https://www.googleapis.com/auth/documents.currentonly",
     "https://www.googleapis.com/auth/script.container.ui",
-    "https://www.googleapis.com/auth/userinfo.email"
-  ]
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "urlFetchWhitelist": [
+    "https://inciteref.com/"
+  ],
+  "addOns": {
+    "common": {
+      "name": "InCite",
+      "logoUrl": "https://inciteref.com/static/icon128.png",
+      "homepageTrigger": {
+        "runFunction": "onHomepage"
+      }
+    },
+    "docs": {
+      "onFileScopeGrantedTrigger": {
+        "runFunction": "onOpen"
+      }
+    }
+  }
 }

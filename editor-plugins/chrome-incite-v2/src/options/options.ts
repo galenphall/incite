@@ -2,19 +2,29 @@ import type { ChromeExtensionSettings } from "../shared/types";
 import { DEFAULT_SETTINGS } from "../shared/constants";
 import { loadSettings, saveSettings } from "../shared/settings";
 
+// Citation style presets
+const CITATION_PRESETS: Record<string, string> = {
+  apa: "({first_author}, {year})",
+  narrative: "{first_author} ({year})",
+  mla: "({first_author})",
+  harvard: "({first_author} {year})",
+  bibtex: "[@{bibtex_key}]",
+  latex: "\\cite{{{bibtex_key}}}",
+};
+
 // --- DOM references ---
-const apiModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="apiMode"]');
-const cloudFields = document.getElementById("cloud-fields")!;
-const localFields = document.getElementById("local-fields")!;
-const cloudUrl = document.getElementById("cloudUrl") as HTMLInputElement;
+const citationStyle = document.getElementById("citationStyle") as HTMLSelectElement;
+const customFormatField = document.getElementById("custom-format-field")!;
+const customCitationFormat = document.getElementById("customCitationFormat") as HTMLInputElement;
 const apiToken = document.getElementById("apiToken") as HTMLInputElement;
-const localUrl = document.getElementById("localUrl") as HTMLInputElement;
 const kInput = document.getElementById("k") as HTMLInputElement;
-const contextSentences = document.getElementById("contextSentences") as HTMLInputElement;
-const googleDocsFmt = document.getElementById("googleDocsCitationFormat") as HTMLInputElement;
-const overleafFmt = document.getElementById("overleafCitationFormat") as HTMLInputElement;
 const showParagraphs = document.getElementById("showParagraphs") as HTMLInputElement;
 const showAbstracts = document.getElementById("showAbstracts") as HTMLInputElement;
+const apiModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="apiMode"]');
+const localFields = document.getElementById("local-fields")!;
+const localUrl = document.getElementById("localUrl") as HTMLInputElement;
+const contextSentences = document.getElementById("contextSentences") as HTMLInputElement;
+const overleafFmt = document.getElementById("overleafCitationFormat") as HTMLInputElement;
 const btnTest = document.getElementById("btn-test")!;
 const testResult = document.getElementById("test-result")!;
 const btnSave = document.getElementById("btn-save")!;
@@ -23,19 +33,32 @@ const saveStatus = document.getElementById("save-status")!;
 // --- Load settings on page open ---
 loadSettings().then(populateForm);
 
+// --- Citation style toggle ---
+citationStyle.addEventListener("change", () => {
+  customFormatField.classList.toggle("hidden", citationStyle.value !== "custom");
+});
+
 // --- API mode toggle ---
 apiModeRadios.forEach((radio) => {
   radio.addEventListener("change", () => {
-    const isCloud = radio.value === "cloud";
-    cloudFields.classList.toggle("hidden", !isCloud);
-    localFields.classList.toggle("hidden", isCloud);
+    localFields.classList.toggle("hidden", radio.value !== "local");
   });
 });
 
-// --- Test connection ---
+// --- Test connection (saves first to use current form values) ---
 btnTest.addEventListener("click", async () => {
   testResult.textContent = "Testing...";
   testResult.className = "test-result";
+
+  // Save current form values first so the health check uses them
+  const selectedMode = document.querySelector<HTMLInputElement>('input[name="apiMode"]:checked');
+  const currentSettings: Partial<ChromeExtensionSettings> = {
+    apiMode: (selectedMode?.value as "cloud" | "local") ?? "cloud",
+    cloudUrl: DEFAULT_SETTINGS.cloudUrl,
+    localUrl: localUrl.value.trim() || DEFAULT_SETTINGS.localUrl,
+    apiToken: apiToken.value.trim(),
+  };
+  await saveSettings(currentSettings);
 
   try {
     const response = await chrome.runtime.sendMessage({ type: "CHECK_HEALTH" });
@@ -56,14 +79,23 @@ btnTest.addEventListener("click", async () => {
 btnSave.addEventListener("click", async () => {
   const selectedMode = document.querySelector<HTMLInputElement>('input[name="apiMode"]:checked');
 
+  // Determine Google Docs citation format from style picker
+  let googleDocsFmtValue: string;
+  if (citationStyle.value === "custom") {
+    googleDocsFmtValue = customCitationFormat.value || DEFAULT_SETTINGS.googleDocsCitationFormat;
+  } else {
+    googleDocsFmtValue = CITATION_PRESETS[citationStyle.value] || DEFAULT_SETTINGS.googleDocsCitationFormat;
+  }
+
   const settings: Partial<ChromeExtensionSettings> = {
     apiMode: (selectedMode?.value as "cloud" | "local") ?? "cloud",
-    cloudUrl: cloudUrl.value.trim() || DEFAULT_SETTINGS.cloudUrl,
+    cloudUrl: DEFAULT_SETTINGS.cloudUrl,
     localUrl: localUrl.value.trim() || DEFAULT_SETTINGS.localUrl,
     apiToken: apiToken.value.trim(),
     k: parseInt(kInput.value) || DEFAULT_SETTINGS.k,
     contextSentences: parseInt(contextSentences.value) || DEFAULT_SETTINGS.contextSentences,
-    googleDocsCitationFormat: googleDocsFmt.value || DEFAULT_SETTINGS.googleDocsCitationFormat,
+    citationStyle: citationStyle.value,
+    googleDocsCitationFormat: googleDocsFmtValue,
     overleafCitationFormat: overleafFmt.value || DEFAULT_SETTINGS.overleafCitationFormat,
     showParagraphs: showParagraphs.checked,
     showAbstracts: showAbstracts.checked,
@@ -76,27 +108,27 @@ btnSave.addEventListener("click", async () => {
 
 // --- Populate form from saved settings ---
 function populateForm(settings: ChromeExtensionSettings) {
-  // API mode
+  // Citation style
+  citationStyle.value = settings.citationStyle || "apa";
+  customFormatField.classList.toggle("hidden", citationStyle.value !== "custom");
+  if (citationStyle.value === "custom") {
+    customCitationFormat.value = settings.googleDocsCitationFormat;
+  }
+
+  // Connection
+  apiToken.value = settings.apiToken;
+
+  // Display
+  kInput.value = String(settings.k);
+  showParagraphs.checked = settings.showParagraphs;
+  showAbstracts.checked = settings.showAbstracts;
+
+  // Advanced
   apiModeRadios.forEach((radio) => {
     radio.checked = radio.value === settings.apiMode;
   });
-  cloudFields.classList.toggle("hidden", settings.apiMode !== "cloud");
   localFields.classList.toggle("hidden", settings.apiMode !== "local");
-
-  // URLs and token
-  cloudUrl.value = settings.cloudUrl;
-  apiToken.value = settings.apiToken;
   localUrl.value = settings.localUrl;
-
-  // Recommendations
-  kInput.value = String(settings.k);
   contextSentences.value = String(settings.contextSentences);
-
-  // Citation formats
-  googleDocsFmt.value = settings.googleDocsCitationFormat;
   overleafFmt.value = settings.overleafCitationFormat;
-
-  // Display
-  showParagraphs.checked = settings.showParagraphs;
-  showAbstracts.checked = settings.showAbstracts;
 }
