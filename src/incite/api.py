@@ -333,14 +333,14 @@ def stats():
 @app.get("/config")
 def config():
     agent = get_agent()
-    from incite.retrieval.factory import EMBEDDERS
+    from incite.retrieval.factory import get_available_embedders
 
     result = {
         "method": agent.method,
         "embedder": agent._embedder_type,
         "mode": _get_display_mode(agent),
         "two_stage": agent._two_stage,
-        "available_embedders": list(EMBEDDERS.keys()),
+        "available_embedders": list(get_available_embedders().keys()),
         "available_methods": ["neural", "bm25", "hybrid"],
         "available_modes": ["paper", "paragraph", "sentence", "grobid"],
     }

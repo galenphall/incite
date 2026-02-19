@@ -159,8 +159,11 @@ def main():
         )
 
         # Embedder selection (only relevant for neural/hybrid)
-        embedder_options = list(EMBEDDERS.keys())
-        embedder_labels = {k: v["name"] for k, v in EMBEDDERS.items()}
+        from incite.retrieval.factory import get_available_embedders
+
+        _available = get_available_embedders()
+        embedder_options = list(_available.keys())
+        embedder_labels = {k: v["name"] for k, v in _available.items()}
 
         embedder_type = st.selectbox(
             "Embedding model",

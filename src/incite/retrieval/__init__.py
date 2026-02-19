@@ -6,6 +6,7 @@ from incite.retrieval.factory import (
     EMBEDDERS,
     build_index,
     create_retriever,
+    get_available_embedders,
     get_embedder,
 )
 from incite.retrieval.hybrid import HybridRetriever
@@ -25,6 +26,7 @@ __all__ = [
     "create_retriever",
     "build_index",
     "get_embedder",
+    "get_available_embedders",
     "EMBEDDERS",
     "DEFAULT_EMBEDDER",
     "CrossEncoderReranker",
