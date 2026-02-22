@@ -28,18 +28,24 @@ def chunk_paper(
     paper: Paper,
     max_tokens: int = 512,
     min_chunk_length: int = 150,
+    source: str | None = None,
+    pre_structured: tuple[list[str], list[str | None]] | None = None,
 ) -> list[Chunk]:
     """Split a paper into chunks for paragraph-level retrieval.
 
     Strategy:
-    1. If paper has `paragraphs` populated (from PDF extraction), use those
-    2. Else if paper has `full_text`, split on double-newlines
-    3. Else fallback to treating abstract as a single chunk
+    1. If pre_structured provided, use those (paragraphs, sections) directly
+    2. Else if paper has `paragraphs` populated (from PDF extraction), use those
+    3. Else if paper has `full_text`, split on double-newlines
+    4. Else fallback to treating abstract as a single chunk
 
     Args:
         paper: Paper object to chunk
         max_tokens: Maximum tokens per chunk (approximate, uses char/4 heuristic)
         min_chunk_length: Minimum character length for a chunk to be kept
+        source: Extraction method label (e.g. "html", "grobid", "abstract")
+        pre_structured: Pre-processed (paragraphs, section_headings) from HTML extraction.
+            When provided, skips heading detection and paragraph splitting.
 
     Returns:
         List of Chunk objects
@@ -47,8 +53,14 @@ def chunk_paper(
     chunks: list[Chunk] = []
     metadata_prefix = _build_paper_metadata_prefix(paper)
 
-    # Determine source text
-    if paper.paragraphs:
+    # Determine source text and section assignments
+    pre_sections: list[str | None] | None = None
+
+    if pre_structured is not None:
+        paragraphs, pre_sections = pre_structured
+        if not paragraphs:
+            return []
+    elif paper.paragraphs:
         paragraphs = paper.paragraphs
     elif paper.full_text:
         paragraphs = _split_into_paragraphs(paper.full_text)
@@ -60,7 +72,8 @@ def chunk_paper(
 
     # Pre-scan: detect reference section by consecutive bibliography entries
     # (fallback when no "References" heading is detected)
-    ref_cutoff = _find_reference_cutoff(paragraphs)
+    # Skip for pre_structured input since HTML preprocessing already filtered
+    ref_cutoff = None if pre_structured else _find_reference_cutoff(paragraphs)
 
     # Filter and create chunks
     char_offset = 0
@@ -71,12 +84,17 @@ def chunk_paper(
         if not para:
             continue
 
+        # Update section from pre_structured data
+        if pre_sections is not None and i < len(pre_sections):
+            if pre_sections[i] is not None:
+                current_section = pre_sections[i]
+
         # Stop if we've reached the detected reference section
         if ref_cutoff is not None and i >= ref_cutoff:
             break
 
-        # Check if this paragraph is a section heading
-        if _looks_like_heading(para):
+        # Check if this paragraph is a section heading (skip for pre_structured)
+        if pre_structured is None and _looks_like_heading(para):
             current_section = para
             # Stop at reference/bibliography sections (always at end of paper)
             if _is_reference_section(current_section):
@@ -139,6 +157,7 @@ def chunk_paper(
                         text=sub_text,
                         section=current_section,
                         char_offset=char_offset,
+                        source=source,
                         context_text=metadata_prefix,
                     )
                 )
@@ -152,6 +171,7 @@ def chunk_paper(
                     text=para,
                     section=current_section,
                     char_offset=char_offset,
+                    source=source,
                     context_text=metadata_prefix,
                 )
             )
@@ -390,7 +410,7 @@ def _is_figure_or_table_caption(text: str) -> bool:
 
 
 def _is_boilerplate(text: str) -> bool:
-    """Skip journal boilerplate, copyright, and download notices."""
+    """Skip journal boilerplate, copyright, download notices, and HTML artifacts."""
     patterns = [
         r"^This content downloaded from",
         r"^Downloaded from\b",
@@ -404,6 +424,17 @@ def _is_boilerplate(text: str) -> bool:
         r"^Authorized licensed use limited to",
         r"^All rights reserved\.",
         r"^For permissions,?\s+please",
+        # HTML-specific boilerplate (safe for PDFs — these never appear in PDF text)
+        r"^(Sign in|Log in|Create (an )?account)\b",
+        r"^(Share|Tweet|Email|Print)\s+(this|article)",
+        r"^(Accept|Reject)\s+(all\s+)?cookies?\b",
+        r"^We use cookies",
+        r"^(View|Show)\s+(all\s+)?(references|citations|figures|tables)",
+        r"^(Cited by|Metrics|Altmetrics)\b",
+        r"^Subscribe to\b",
+        r"^(Access|Read)\s+the full",
+        r"^Author (contributions?|information)\b",
+        r"^Data (availability|sharing)\b",
     ]
     for p in patterns:
         if re.search(p, text[:120], re.IGNORECASE):

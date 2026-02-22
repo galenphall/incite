@@ -6,7 +6,6 @@ from typing import Optional
 import numpy as np
 
 from incite.embeddings.base import BaseEmbedder
-from incite.utils import get_best_device
 
 # Default model paths (relative to project root).
 # Override via EMBEDDERS["minilm-ft"]["model"] in factory.py or MINILM_FT_MODEL_PATH env var.
@@ -29,10 +28,19 @@ class FineTunedMiniLMEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_path = model_path or DEFAULT_MODEL_PATH
-        self.device = device if device is not None else get_best_device()
         self.batch_size = batch_size
+        self._requested_device = device
         self._model = None
         self._dimension: Optional[int] = None
+
+    @property
+    def device(self) -> str:
+        if self._requested_device is not None:
+            return self._requested_device
+        from incite.utils import get_best_device
+
+        self._requested_device = get_best_device()
+        return self._requested_device
 
     def _load_model(self):
         if self._model is None:
@@ -87,10 +95,19 @@ class FineTunedGraniteEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_path = model_path or DEFAULT_GRANITE_MODEL_PATH
-        self.device = device if device is not None else get_best_device()
         self.batch_size = batch_size
+        self._requested_device = device
         self._model = None
         self._dimension: Optional[int] = None
+
+    @property
+    def device(self) -> str:
+        if self._requested_device is not None:
+            return self._requested_device
+        from incite.utils import get_best_device
+
+        self._requested_device = get_best_device()
+        return self._requested_device
 
     def _load_model(self):
         if self._model is None:

@@ -60,6 +60,68 @@ class TestBibTeXParserJournal:
         assert "NoTitle2021" not in keys
 
 
+PAPERPILE_BIB = """
+@article{Doe2021,
+    title = {Paperpile DOI in bdsk-url},
+    author = {Doe, Jane},
+    year = {2021},
+    bdsk-url-1 = {https://doi.org/10.1234/paperpile-test}
+}
+
+@article{Roe2022,
+    title = {DOI in url field only},
+    author = {Roe, Richard},
+    year = {2022},
+    url = {https://dx.doi.org/10.5678/url-field-test}
+}
+
+@article{Both2023,
+    title = {Has both doi and bdsk-url},
+    author = {Both, Alex},
+    year = {2023},
+    doi = {10.9999/standard-doi},
+    bdsk-url-1 = {https://doi.org/10.9999/should-be-ignored}
+}
+
+@article{NoDoi2020,
+    title = {No DOI anywhere},
+    author = {None, Nobody},
+    year = {2020},
+    url = {https://example.com/not-a-doi}
+}
+"""
+
+
+class TestBibTeXParserDoiFallback:
+    """Test fallback DOI extraction from bdsk-url and url fields."""
+
+    def test_doi_from_bdsk_url_1(self):
+        entries = BibTeXParser.parse_string(PAPERPILE_BIB)
+        doe = next(e for e in entries if e["key"] == "Doe2021")
+        assert doe["doi"] == "10.1234/paperpile-test"
+
+    def test_doi_from_url_field(self):
+        entries = BibTeXParser.parse_string(PAPERPILE_BIB)
+        roe = next(e for e in entries if e["key"] == "Roe2022")
+        assert roe["doi"] == "10.5678/url-field-test"
+
+    def test_standard_doi_preferred_over_fallback(self):
+        entries = BibTeXParser.parse_string(PAPERPILE_BIB)
+        both = next(e for e in entries if e["key"] == "Both2023")
+        assert both["doi"] == "10.9999/standard-doi"
+
+    def test_no_doi_when_url_not_doi(self):
+        entries = BibTeXParser.parse_string(PAPERPILE_BIB)
+        nodoi = next(e for e in entries if e["key"] == "NoDoi2020")
+        assert nodoi["doi"] is None
+
+    def test_fallback_doi_flows_to_paper(self):
+        entries = BibTeXParser.parse_string(PAPERPILE_BIB)
+        papers = bibtex_entries_to_papers(entries)
+        doe = next(p for p in papers if p.bibtex_key == "Doe2021")
+        assert doe.doi == "10.1234/paperpile-test"
+
+
 class TestBibtexEntriesToPapers:
     """Test conversion of parsed BibTeX dicts to Paper objects."""
 

@@ -12,14 +12,11 @@ load_dotenv()
 def main():
     """Main CLI entry point."""
     from incite.cli import (
-        acquire,
         agent,
         cloud,
         core,
         data,
         doctor,
-        experiments,
-        finetune,
         llm,
         paperpile,
         serve,
@@ -31,20 +28,20 @@ def main():
         core,
         data,
         llm,
-        finetune,
-        experiments,
         agent,
         serve,
-        acquire,
         cloud,
         paperpile,
         doctor,
     ]
 
+    from incite import __version__
+
     parser = argparse.ArgumentParser(
         prog="incite",
         description="Local-first citation recommendation system",
     )
+    parser.add_argument("--version", action="version", version=f"incite {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     for mod in modules:

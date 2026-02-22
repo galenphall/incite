@@ -482,6 +482,17 @@ body {
 
 .empty-message a:hover { text-decoration: underline; }
 
+.setup-steps {
+  text-align: left;
+  padding-left: 20px;
+  margin: 8px 0 0;
+}
+
+.setup-steps li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
 /* View in library link */
 .link-button {
   color: var(--accent);

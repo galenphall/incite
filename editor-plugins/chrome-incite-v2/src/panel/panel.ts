@@ -1,4 +1,4 @@
-import type { Recommendation, RecommendResponse, TrackedCitation, UIClassMap } from "@incite/shared";
+import type { Recommendation, RecommendResponse, TrackedCitation, UIClassMap, Collection } from "@incite/shared";
 import {
   CitationTracker,
   exportBibTeX,
@@ -26,6 +26,8 @@ const CHROME_CLASS_MAP: UIClassMap = {
   confidenceLow: "confidence-low",
   resultTitle: "result-title",
   resultMeta: "result-meta",
+  evidenceToggle: "evidence-toggle",
+  evidenceContent: "evidence-content",
   evidence: "evidence",
   evidenceSecondary: "evidence-secondary",
   evidenceScore: "evidence-score",
@@ -68,6 +70,9 @@ async function loadPanelSettings() {
   }
 }
 
+let collections: Collection[] = [];
+let selectedCollectionId: string | null = null;
+
 // --- DOM references ---
 const content = document.getElementById("content")!;
 const btnRecommend = document.getElementById("btn-recommend") as HTMLButtonElement;
@@ -76,6 +81,8 @@ const manualInput = document.getElementById("manual-input")!;
 const btnToggleManual = document.getElementById("btn-toggle-manual") as HTMLButtonElement;
 const manualText = document.getElementById("manual-text") as HTMLTextAreaElement;
 const btnManualSubmit = document.getElementById("btn-manual-submit") as HTMLButtonElement;
+const collectionFilter = document.getElementById("collection-filter")!;
+const collectionSelect = document.getElementById("collection-select") as HTMLSelectElement;
 
 // --- Event listeners ---
 
@@ -109,6 +116,17 @@ chrome.runtime.sendMessage({ type: "PANEL_READY" }).catch((err) => {
   console.error("PANEL_READY message failed:", err);
 });
 
+// Collection filter
+collectionSelect.addEventListener("change", () => {
+  selectedCollectionId = collectionSelect.value || null;
+  chrome.storage.sync.set({ incite_collection_id: selectedCollectionId });
+});
+
+// Load persisted collection selection
+chrome.storage.sync.get("incite_collection_id", (result) => {
+  selectedCollectionId = result.incite_collection_id ?? null;
+});
+
 // Check health, load settings, and initialize tracker on load
 checkHealth();
 loadPanelSettings();
@@ -134,7 +152,7 @@ async function getRecommendations() {
   showLoading();
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_RECOMMENDATIONS" });
+    const response = await chrome.runtime.sendMessage({ type: "GET_RECOMMENDATIONS", collectionId: selectedCollectionId });
     if (response?.error) {
       showExtractionError(response.error);
     } else if (response?.response) {
@@ -159,7 +177,7 @@ async function getRecommendationsForText(text: string) {
   showLoading();
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_RECOMMENDATIONS_FOR_TEXT", text });
+    const response = await chrome.runtime.sendMessage({ type: "GET_RECOMMENDATIONS_FOR_TEXT", text, collectionId: selectedCollectionId });
     if (response?.error) {
       showError(response.error);
     } else if (response?.response) {
@@ -183,6 +201,7 @@ async function checkHealth() {
     if (response?.response) {
       statusDot.className = "status-dot connected";
       statusDot.title = `Connected -- ${response.response.corpus_size ?? "?"} papers`;
+      fetchCollections();
     } else {
       statusDot.className = "status-dot error";
       statusDot.title = response?.error ?? "Not connected";
@@ -191,6 +210,37 @@ async function checkHealth() {
     statusDot.className = "status-dot error";
     statusDot.title = "Not connected";
   }
+}
+
+async function fetchCollections() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GET_COLLECTIONS" });
+    collections = response?.collections ?? [];
+    renderCollectionDropdown();
+  } catch {
+    // Collections are optional
+  }
+}
+
+function renderCollectionDropdown() {
+  const settings = panelSettings as { showParagraphs: boolean; showAbstracts: boolean };
+  // Only show in cloud mode when collections exist
+  if (collections.length === 0) {
+    collectionFilter.style.display = "none";
+    return;
+  }
+
+  collectionSelect.innerHTML = '<option value="">All papers</option>';
+  for (const c of collections) {
+    const opt = document.createElement("option");
+    opt.value = String(c.id);
+    opt.textContent = `${c.name} (${c.item_count})`;
+    if (selectedCollectionId === String(c.id)) {
+      opt.selected = true;
+    }
+    collectionSelect.appendChild(opt);
+  }
+  collectionFilter.style.display = "";
 }
 
 // --- Rendering ---
@@ -255,6 +305,17 @@ async function showResults(response: RecommendResponse) {
 
   // Collapse manual input on successful results
   manualInput.classList.add("collapsed");
+
+  // Attach evidence toggle listeners
+  content.querySelectorAll("[data-action='toggle-evidence']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const evidenceContent = btn.nextElementSibling as HTMLElement | null;
+      if (evidenceContent) {
+        const expanded = evidenceContent.classList.toggle("expanded");
+        btn.innerHTML = expanded ? "Hide evidence &#9652;" : "Show evidence &#9662;";
+      }
+    });
+  });
 
   // Attach event listeners for insert buttons
   content.querySelectorAll("[data-action='insert']").forEach((btn) => {

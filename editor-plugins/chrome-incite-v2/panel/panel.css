@@ -32,10 +32,10 @@
   --fg-muted: var(--graphite);
   --border: var(--fog);
   --card-bg: #ffffff;
-  --accent: var(--oxblood);
-  --accent-hover: var(--oxblood-light);
-  --evidence-bg: var(--oxblood-faint);
-  --evidence-border: var(--oxblood-muted);
+  --accent: var(--ink);
+  --accent-hover: var(--ink-soft);
+  --evidence-bg: var(--paper);
+  --evidence-border: var(--silver);
   --badge-bg: var(--paper);
   --badge-fg: var(--ink-muted);
   --radius: 6px;
@@ -49,10 +49,10 @@
     --fg-muted: var(--slate);
     --border: #3a3a40;
     --card-bg: var(--ink-soft);
-    --accent: var(--oxblood-muted);
-    --accent-hover: var(--oxblood-light);
-    --evidence-bg: rgba(139, 46, 46, 0.15);
-    --evidence-border: var(--oxblood-muted);
+    --accent: var(--cream);
+    --accent-hover: var(--silver);
+    --evidence-bg: rgba(255, 255, 255, 0.06);
+    --evidence-border: #4a4a52;
     --badge-bg: #3a3a40;
     --badge-fg: var(--silver);
   }
@@ -95,6 +95,8 @@ body {
 @media (prefers-color-scheme: dark) {
   .logo-light { display: none; }
   .logo-dark { display: block; }
+  .btn-primary, .btn-insert { color: var(--ink); }
+  .btn-insert:hover { color: var(--ink); }
 }
 
 .header-right {
@@ -122,6 +124,27 @@ body {
 }
 
 .settings-link:hover { color: var(--fg); text-decoration: underline; }
+
+/* Collection filter */
+.collection-filter {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.collection-select {
+  width: 100%;
+  padding: 5px 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.collection-select:focus {
+  outline: none;
+  border-color: var(--oxblood);
+}
 
 /* Action bar */
 #action-bar {
@@ -285,6 +308,27 @@ kbd {
   overflow: hidden;
 }
 
+/* Evidence toggle */
+.evidence-toggle {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  margin-top: 4px;
+  transition: color 0.15s ease;
+}
+.evidence-toggle:hover { color: var(--fg); }
+
+.evidence-content {
+  display: none;
+}
+.evidence-content.expanded {
+  display: block;
+}
+
 /* Evidence snippets */
 .evidence {
   font-size: 11px;
@@ -307,7 +351,7 @@ kbd {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
-  color: var(--oxblood);
+  color: var(--ink-muted);
   margin-right: 4px;
 }
 

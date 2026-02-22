@@ -96,6 +96,16 @@ class BibTeXParser:
         if doi_field:
             doi = BibTeXParser._clean_doi(doi_field.value)
 
+        # Fallback: check bdsk-url-1, bdsk-url-2, url for DOI URLs
+        # (Paperpile exports often store DOIs in these fields)
+        if not doi:
+            for fallback_key in ("bdsk-url-1", "bdsk-url-2", "url"):
+                fb_field = entry.fields_dict.get(fallback_key)
+                if fb_field and "doi.org" in fb_field.value:
+                    doi = BibTeXParser._clean_doi(fb_field.value)
+                    if doi:
+                        break
+
         # Extract abstract (if present)
         abstract = None
         abstract_field = entry.fields_dict.get("abstract")
@@ -208,6 +218,35 @@ def bibtex_entries_to_papers(entries: list[dict]) -> list[Paper]:
                 source_file="paperpile",
             )
         )
+    return papers
+
+
+def resolve_dois_via_crossref(papers: list[Paper], max_papers: int = 200) -> list[Paper]:
+    """Resolve missing DOIs via CrossRef title search.
+
+    Wraps :func:`incite.corpus.crossref.resolve_dois_batch` with graceful
+    fallback when CrossRef or rapidfuzz are unavailable.
+
+    Args:
+        papers: List of Paper objects (modified in-place).
+        max_papers: Maximum number of lookups per call.
+
+    Returns:
+        The same list of papers (for chaining convenience).
+    """
+    try:
+        from incite.corpus.crossref import resolve_dois_batch
+    except ImportError:
+        logger.info("CrossRef client not available, skipping DOI resolution")
+        return papers
+
+    try:
+        resolved = resolve_dois_batch(papers, max_papers=max_papers)
+        if resolved:
+            logger.info("Resolved %d DOIs via CrossRef", resolved)
+    except Exception:
+        logger.warning("CrossRef DOI resolution failed", exc_info=True)
+
     return papers
 
 

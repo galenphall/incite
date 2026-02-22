@@ -1,5 +1,5 @@
 import type { Translator, PaperMetadata, DetectionResult } from "./types";
-import { extractFullText } from "./generic";
+import { extractStructuredText } from "./generic";
 
 function getMeta(doc: Document, name: string): string | null {
   const el = doc.querySelector(`meta[name="${name}"], meta[property="${name}"]`);
@@ -48,7 +48,13 @@ export const arxivTranslator: Translator = {
 
     // On arxiv HTML pages (/html/), extract full text; on abs pages, skip (only abstract)
     const isHtmlPage = doc.location.href.includes("/html/");
-    const full_text = isHtmlPage ? (extractFullText(doc) ?? undefined) : undefined;
+    let full_text: string | undefined;
+    let structured_text: PaperMetadata["structured_text"];
+    if (isHtmlPage) {
+      const result = extractStructuredText(doc);
+      full_text = result.full_text ?? undefined;
+      structured_text = result.structured_text ?? undefined;
+    }
 
     return {
       title,
@@ -61,6 +67,7 @@ export const arxivTranslator: Translator = {
       arxiv_id: arxivId,
       pdf_url,
       full_text,
+      structured_text,
     };
   },
 

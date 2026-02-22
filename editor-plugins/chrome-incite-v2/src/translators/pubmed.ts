@@ -1,5 +1,5 @@
 import type { Translator, PaperMetadata, DetectionResult } from "./types";
-import { extractFullText } from "./generic";
+import { extractStructuredText } from "./generic";
 
 function getMeta(doc: Document, name: string): string | null {
   const el = doc.querySelector(`meta[name="${name}"], meta[property="${name}"]`);
@@ -39,7 +39,7 @@ export const pubmedTranslator: Translator = {
       abstract = abstractDiv.textContent?.trim();
     }
 
-    const full_text = extractFullText(doc) ?? undefined;
+    const { full_text, structured_text } = extractStructuredText(doc);
 
     return {
       title,
@@ -50,7 +50,8 @@ export const pubmedTranslator: Translator = {
       journal,
       url: doc.location.href,
       pdf_url,
-      full_text,
+      full_text: full_text ?? undefined,
+      structured_text: structured_text ?? undefined,
     };
   },
 

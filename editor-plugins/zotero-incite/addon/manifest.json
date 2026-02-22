@@ -1,14 +1,15 @@
 {
 	"manifest_version": 2,
 	"name": "inCite for Zotero",
-	"version": "0.1.0",
-	"description": "Citation recommendations from your own library, powered by inCite.",
+	"version": "0.2.0",
+	"description": "Library sync control center for inCite, powered by your Zotero library.",
 	"author": "Galen Hall",
 	"homepage_url": "https://github.com/galenphall/incite",
 	"icons": {
 		"48": "content/icons/icon48.png",
 		"96": "content/icons/icon96.png"
 	},
+	"preferences": "content/preferences.xhtml",
 	"applications": {
 		"zotero": {
 			"id": "incite@galenphall.com",

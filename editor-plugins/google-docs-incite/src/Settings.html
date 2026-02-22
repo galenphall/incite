@@ -253,11 +253,20 @@
   </div>
 
   <div id="cloud-fields">
-    <div class="field">
-      <label for="apiToken">API Token</label>
-      <div class="field-desc">Your API token (from inciteref.com account settings)</div>
-      <input type="text" id="apiToken" placeholder="mc_...">
+    <div class="field" style="background: #e8f5e9; padding: 8px 10px; border-radius: 4px; border-left: 3px solid #3a6b4a;">
+      <div style="font-size: 12px; color: #2e5a3a;">Cloud authentication uses your Google account automatically.</div>
     </div>
+
+    <details id="manual-token-toggle">
+      <summary>Manual API Token (Advanced)</summary>
+      <div class="advanced-content">
+        <div class="field">
+          <label for="apiToken">API Token</label>
+          <div class="field-desc">Override Google auth with a manual token (from inciteref.com account settings)</div>
+          <input type="text" id="apiToken" placeholder="mc_...">
+        </div>
+      </div>
+    </details>
 
     <div class="field">
       <label for="cloudUrl">Cloud URL</label>
@@ -391,41 +400,67 @@
       resultEl.className = 'test-result';
 
       var mode = document.getElementById('apiMode').value;
-      var baseUrl, healthPath, headers = {};
+      var baseUrl, healthPath;
 
       if (mode === 'cloud') {
         baseUrl = (document.getElementById('cloudUrl').value.trim() || 'https://inciteref.com').replace(/\/+$/, '');
         healthPath = '/api/v1/health';
-        var token = document.getElementById('apiToken').value.trim();
-        if (token) headers['Authorization'] = 'Bearer ' + token;
       } else {
         baseUrl = (document.getElementById('apiUrl').value.trim() || 'http://127.0.0.1:8230').replace(/\/+$/, '');
         healthPath = '/health';
       }
 
-      var controller = new AbortController();
-      var timer = setTimeout(function() { controller.abort(); }, 5000);
-
-      fetch(baseUrl + healthPath, { headers: headers, signal: controller.signal })
-        .then(function(resp) {
-          clearTimeout(timer);
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          return resp.json();
-        })
-        .then(function(data) {
-          if (data.ready) {
-            resultEl.textContent = 'Connected (' + data.corpus_size + ' papers)';
-            resultEl.className = 'test-result success';
-          } else {
-            resultEl.textContent = 'Server loading...';
-            resultEl.className = 'test-result';
-          }
-        })
-        .catch(function(err) {
-          clearTimeout(timer);
-          resultEl.textContent = 'Failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message);
-          resultEl.className = 'test-result error';
+      // Get auth headers: use manual token if set, otherwise Google token for cloud
+      var headersPromise;
+      var manualToken = document.getElementById('apiToken').value.trim();
+      if (mode === 'cloud' && !manualToken) {
+        headersPromise = new Promise(function(resolve) {
+          google.script.run
+            .withSuccessHandler(function(token) {
+              resolve({ 'Authorization': 'Bearer ' + token });
+            })
+            .withFailureHandler(function() {
+              resolve({});
+            })
+            .getGoogleToken();
         });
+      } else {
+        var h = {};
+        if (mode === 'cloud' && manualToken) {
+          h['Authorization'] = 'Bearer ' + manualToken;
+        }
+        headersPromise = Promise.resolve(h);
+      }
+
+      headersPromise.then(function(headers) {
+        var controller = new AbortController();
+        var timer = setTimeout(function() { controller.abort(); }, 5000);
+
+        fetch(baseUrl + healthPath, { headers: headers, signal: controller.signal })
+          .then(function(resp) {
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+          })
+          .then(function(data) {
+            if (data.ready || data.status === 'ready' || data.status === 'healthy') {
+              var size = data.corpus_size != null ? ' (' + data.corpus_size + ' papers)' : '';
+              resultEl.textContent = 'Connected' + size;
+              resultEl.className = 'test-result success';
+            } else if (data.status === 'no_library') {
+              resultEl.textContent = 'Connected — no library yet';
+              resultEl.className = 'test-result success';
+            } else {
+              resultEl.textContent = 'Server loading...';
+              resultEl.className = 'test-result';
+            }
+          })
+          .catch(function(err) {
+            clearTimeout(timer);
+            resultEl.textContent = 'Failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message);
+            resultEl.className = 'test-result error';
+          });
+      });
     });
   </script>
 </body>

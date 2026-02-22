@@ -18,6 +18,8 @@ export interface UIClassMap {
 	confidenceLow: string;
 	resultTitle: string;
 	resultMeta: string;
+	evidenceToggle: string;
+	evidenceContent: string;
 	evidence: string;
 	evidenceSecondary: string;
 	evidenceScore: string;
@@ -50,6 +52,8 @@ export const DEFAULT_CLASS_MAP: UIClassMap = {
 	confidenceLow: "incite-confidence-low",
 	resultTitle: "incite-result-title",
 	resultMeta: "incite-result-meta",
+	evidenceToggle: "incite-evidence-toggle",
+	evidenceContent: "incite-evidence-content",
 	evidence: "incite-evidence",
 	evidenceSecondary: "incite-evidence-secondary",
 	evidenceScore: "incite-evidence-score",
@@ -101,6 +105,13 @@ export function confidenceLevel(score: number): "high" | "mid" | "low" {
 	if (score >= 0.55) return "high";
 	if (score >= 0.35) return "mid";
 	return "low";
+}
+
+/** Map confidence score to human-readable label. */
+export function confidenceLabel(score: number): string {
+	if (score >= 0.55) return "Strong";
+	if (score >= 0.35) return "Good";
+	return "Weak";
 }
 
 /**
@@ -187,7 +198,7 @@ export function renderResultCardHTML(
 	const confClass = level === "high" ? c.confidenceHigh
 		: level === "mid" ? c.confidenceMid
 		: c.confidenceLow;
-	const confLabel = `${Math.round(confidence * 100)}%`;
+	const confText = confidenceLabel(confidence);
 
 	let html = `<div class="${c.resultCard}">`;
 
@@ -200,7 +211,7 @@ export function renderResultCardHTML(
 		html += `<span class="${c.citedBadge}">Cited</span>`;
 	}
 	html += `</div>`;
-	html += `<span class="${c.confidenceBadge} ${confClass}">${confLabel}</span>`;
+	html += `<span class="${c.confidenceBadge} ${confClass}" title="Score: ${confidence.toFixed(3)}">${confText}</span>`;
 	html += `</div>`;
 
 	// Title
@@ -217,8 +228,14 @@ export function renderResultCardHTML(
 		html += `<div class="${c.resultMeta}">${escapeHtml(meta.join(" "))}</div>`;
 	}
 
-	// Evidence
-	html += renderEvidenceHTML(rec, options, cm);
+	// Collapsible evidence
+	const evidenceHTML = renderEvidenceHTML(rec, options, cm);
+	if (evidenceHTML) {
+		html += `<button class="${c.evidenceToggle}" data-action="toggle-evidence">Show evidence &#9662;</button>`;
+		html += `<div class="${c.evidenceContent}">`;
+		html += evidenceHTML;
+		html += `</div>`;
+	}
 
 	// Abstract
 	if (options.showAbstracts && rec.abstract) {

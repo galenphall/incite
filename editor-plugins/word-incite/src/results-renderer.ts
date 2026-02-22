@@ -24,6 +24,8 @@ export const WORD_CLASS_MAP: Partial<UIClassMap> = {
 	confidenceLow: "mc-confidence-low",
 	resultTitle: "mc-title",
 	resultMeta: "mc-meta",
+	evidenceToggle: "mc-evidence-toggle",
+	evidenceContent: "mc-evidence-content",
 	evidence: "mc-paragraph",
 	resultActions: "mc-actions",
 	insertBtn: "mc-insert-btn",
@@ -122,6 +124,16 @@ export function renderResults(
 			checkbox.checked = options.selectedRecs.has(rec.paper_id);
 			checkbox.addEventListener("change", () => {
 				callbacks.onSelect(rec, checkbox.checked);
+			});
+		}
+
+		// Wire up evidence toggle
+		const evidenceToggle = card.querySelector(`.mc-evidence-toggle`) as HTMLButtonElement | null;
+		const evidenceContent = card.querySelector(`.mc-evidence-content`) as HTMLElement | null;
+		if (evidenceToggle && evidenceContent) {
+			evidenceToggle.addEventListener("click", () => {
+				const expanded = evidenceContent.classList.toggle("expanded");
+				evidenceToggle.innerHTML = expanded ? "Hide evidence &#9652;" : "Show evidence &#9662;";
 			});
 		}
 

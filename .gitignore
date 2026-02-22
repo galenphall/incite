@@ -91,6 +91,7 @@ package-lock.json
 Thumbs.db
 
 # Claude/Swarm runtime state
+.claude/worktrees/
 .claude-flow/
 .swarm/
 conversation.txt

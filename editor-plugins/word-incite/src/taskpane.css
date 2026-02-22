@@ -116,10 +116,11 @@ body {
 }
 
 .mc-btn-primary {
-  background: var(--accent);
-  color: var(--cream);
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
 }
-.mc-btn-primary:hover { background: var(--accent-hover); }
+.mc-btn-primary:hover { background: var(--badge-bg); border-color: var(--silver); }
 .mc-btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -148,6 +149,27 @@ body {
   fill: var(--fg-muted);
 }
 .mc-btn-icon:hover svg { fill: var(--fg); }
+
+/* -- Collection filter --------------------------------------------- */
+.mc-collection-filter {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mc-collection-select {
+  width: 100%;
+  padding: 5px 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.mc-collection-select:focus {
+  outline: none;
+  border-color: var(--oxblood);
+}
 
 /* -- Status ------------------------------------------------------- */
 .status {
@@ -383,13 +405,35 @@ body {
   margin-bottom: 4px;
 }
 
+/* Evidence toggle */
+.mc-evidence-toggle {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  margin-top: 4px;
+  transition: color 0.15s ease;
+}
+.mc-evidence-toggle:hover { color: var(--fg); }
+
+.mc-evidence-content {
+  display: none;
+}
+.mc-evidence-content.expanded {
+  display: block;
+}
+
 .mc-paragraph {
   font-size: 11px;
   color: var(--fg);
   border-left: 3px solid var(--evidence-border);
   background: var(--evidence-bg);
   padding: 6px 8px;
-  margin: 6px 0;
+  margin: 4px 0;
   line-height: 1.4;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -399,6 +443,23 @@ body {
   border-radius: 2px;
   font-weight: 600;
   color: var(--accent);
+}
+
+/* Query context bar */
+.mc-query-context {
+  padding: 6px 8px;
+  margin: 8px 8px 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mc-query-context strong {
+  font-weight: 500;
+  color: var(--fg);
 }
 
 /* -- Selection bar ------------------------------------------------ */

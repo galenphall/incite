@@ -117,6 +117,13 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// ── Google OAuth token ──────────────────────────────────────────
+
+/** Return the current user's Google OAuth token for cloud auth. */
+function getGoogleToken() {
+  return ScriptApp.getOAuthToken();
+}
+
 // ── Settings (UserProperties) ───────────────────────────────────
 
 var DEFAULTS = {
@@ -384,6 +391,78 @@ function saveCursorPosition_(cursor, paragraphIndex) {
   cache.put('mc_charOffset', String(charOffset), 600);
 }
 
+// ── Citation tracking (DocumentProperties) ──────────────────────
+
+var CITATION_PROP_PREFIX = 'incite_citations_';
+var CITATION_CHUNK_SIZE = 8000; // stay under 9KB per-property limit
+
+function loadCitations() {
+  var props = PropertiesService.getDocumentProperties();
+  var all = props.getProperties();
+  var chunks = [];
+  for (var i = 0; ; i++) {
+    var key = CITATION_PROP_PREFIX + i;
+    if (all[key] === undefined) break;
+    chunks.push(all[key]);
+  }
+  if (chunks.length === 0) return [];
+  try {
+    return JSON.parse(chunks.join(''));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveCitations(citations) {
+  var props = PropertiesService.getDocumentProperties();
+  var json = JSON.stringify(citations);
+  // Delete old chunks first
+  var all = props.getProperties();
+  for (var key in all) {
+    if (key.indexOf(CITATION_PROP_PREFIX) === 0) {
+      props.deleteProperty(key);
+    }
+  }
+  // Write new chunks
+  for (var i = 0; i < json.length; i += CITATION_CHUNK_SIZE) {
+    props.setProperty(
+      CITATION_PROP_PREFIX + Math.floor(i / CITATION_CHUNK_SIZE),
+      json.substring(i, i + CITATION_CHUNK_SIZE)
+    );
+  }
+}
+
+function trackCitation(recData) {
+  var citations = loadCitations();
+  // Dedup by paper_id
+  for (var i = 0; i < citations.length; i++) {
+    if (citations[i].paper_id === recData.paper_id) return citations;
+  }
+  citations.push({
+    paper_id: recData.paper_id,
+    bibtex_key: recData.bibtex_key || recData.paper_id,
+    title: recData.title,
+    authors: recData.authors || [],
+    year: recData.year,
+    doi: recData.doi,
+    journal: recData.journal,
+    insertedAt: Date.now()
+  });
+  saveCitations(citations);
+  return citations;
+}
+
+function removeCitation(paperId) {
+  var citations = loadCitations();
+  citations = citations.filter(function(c) { return c.paper_id !== paperId; });
+  saveCitations(citations);
+  return citations;
+}
+
+function getCitations() {
+  return loadCitations().sort(function(a, b) { return a.insertedAt - b.insertedAt; });
+}
+
 // ── Citation insertion ──────────────────────────────────────────
 
 /**
@@ -395,7 +474,7 @@ function saveCursorPosition_(cursor, paragraphIndex) {
  *
  * @param {string} citationText  The pre-formatted citation string.
  */
-function insertCitation(citationText) {
+function insertCitation(citationText, recData) {
   var doc = DocumentApp.getActiveDocument();
   var body = doc.getBody();
 
@@ -415,11 +494,18 @@ function insertCitation(citationText) {
 
       if (textLength === 0) {
         text.setText(citationText);
+        if (recData && recData.paper_id) {
+          text.setLinkUrl(0, citationText.length - 1, 'https://inciteref.com/paper/' + recData.paper_id);
+        }
       } else {
         var insertPos = Math.min(charOffset, textLength);
         text.insertText(insertPos, citationText);
+        if (recData && recData.paper_id) {
+          text.setLinkUrl(insertPos, insertPos + citationText.length - 1, 'https://inciteref.com/paper/' + recData.paper_id);
+        }
         cache.put('mc_charOffset', String(insertPos + citationText.length), 600);
       }
+      if (recData) trackCitation(recData);
       return;
     }
   }
@@ -431,6 +517,62 @@ function insertCitation(citationText) {
     var offset = cursor.getOffset();
     if (element.getType() === DocumentApp.ElementType.TEXT) {
       element.asText().insertText(offset, citationText);
+      if (recData && recData.paper_id) {
+        element.asText().setLinkUrl(offset, offset + citationText.length - 1, 'https://inciteref.com/paper/' + recData.paper_id);
+      }
+      if (recData) trackCitation(recData);
+      return;
+    }
+  }
+
+  DocumentApp.getUi().alert(
+    'Could not determine cursor position. ' +
+    'Click in your document and run Get Recommendations before inserting.'
+  );
+}
+
+/**
+ * Insert APA-formatted bibliography text at the saved cursor position.
+ * Uses the same cached-cursor pattern as insertCitation but without
+ * hyperlinks or citation tracking.
+ *
+ * @param {string} text  The pre-formatted bibliography text.
+ */
+function insertBibliography(text) {
+  var doc = DocumentApp.getActiveDocument();
+  var body = doc.getBody();
+
+  var cache = CacheService.getUserCache();
+  var savedParaIndex = cache.get('mc_paraIndex');
+  var savedCharOffset = cache.get('mc_charOffset');
+
+  if (savedParaIndex !== null && savedCharOffset !== null) {
+    var paraIndex = parseInt(savedParaIndex, 10);
+    var charOffset = parseInt(savedCharOffset, 10);
+
+    if (paraIndex >= 0 && paraIndex < body.getNumChildren()) {
+      var para = body.getChild(paraIndex);
+      var editText = para.editAsText();
+      var textLength = editText.getText().length;
+
+      if (textLength === 0) {
+        editText.setText(text);
+      } else {
+        var insertPos = Math.min(charOffset, textLength);
+        editText.insertText(insertPos, text);
+        cache.put('mc_charOffset', String(insertPos + text.length), 600);
+      }
+      return;
+    }
+  }
+
+  // No saved position — try live cursor as fallback
+  var cursor = doc.getCursor();
+  if (cursor) {
+    var element = cursor.getElement();
+    var offset = cursor.getOffset();
+    if (element.getType() === DocumentApp.ElementType.TEXT) {
+      element.asText().insertText(offset, text);
       return;
     }
   }

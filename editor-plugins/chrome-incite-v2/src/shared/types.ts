@@ -44,6 +44,7 @@ export interface InsertResultMessage {
 
 export interface GetRecommendationsMessage {
   type: "GET_RECOMMENDATIONS";
+  collectionId?: string | null;
 }
 
 export interface CheckHealthMessage {

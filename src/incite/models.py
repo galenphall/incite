@@ -198,6 +198,7 @@ class Chunk:
     section: Optional[str] = None  # Section heading this chunk belongs to
     char_offset: int = 0  # Position in full text (for reconstruction)
     page_number: Optional[int] = None  # 1-indexed page number in source PDF
+    source: Optional[str] = None  # Extraction method: "html", "grobid", "abstract", "pymupdf"
     context_text: Optional[str] = None
     # Paper metadata prefix for embedding context (e.g., "Title. Authors. 2023. Nature").
     # Set during chunking via format_paper_metadata_prefix(). Prepended to chunk text
@@ -594,7 +595,7 @@ class EvaluationResult:
         # Compute CIs if per-query data is available
         cis: dict[str, tuple[float, float] | None] = {}
         if self.per_query:
-            from incite.evaluation.metrics import bootstrap_ci
+            from incite.models import _bootstrap_ci as bootstrap_ci
 
             metric_map = {
                 "Recall@1:": "recall@1",
@@ -656,3 +657,28 @@ class EvaluationResult:
             lines.append(f"  Evidence Coverage:    {self.evidence_coverage:.1%}")
             lines.append(f"  Mean Best Chunk Score: {self.mean_best_chunk_score:.3f}")
         return "\n".join(lines)
+
+
+def _bootstrap_ci(
+    scores: "Sequence[float]",
+    n_bootstrap: int = 10000,
+    confidence: float = 0.95,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """Compute bootstrap confidence interval for a metric."""
+
+    import numpy as np
+
+    scores_arr = np.array(scores, dtype=np.float64)
+    if len(scores_arr) == 0:
+        return (0.0, 0.0)
+
+    rng = np.random.default_rng(seed)
+    n = len(scores_arr)
+    indices = rng.integers(0, n, size=(n_bootstrap, n))
+    boot_means = scores_arr[indices].mean(axis=1)
+
+    alpha = 1.0 - confidence
+    lower = float(np.percentile(boot_means, 100 * alpha / 2))
+    upper = float(np.percentile(boot_means, 100 * (1 - alpha / 2)))
+    return (lower, upper)

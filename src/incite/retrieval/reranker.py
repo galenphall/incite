@@ -7,7 +7,6 @@ import numpy as np
 
 from incite.interfaces import Reranker, Retriever
 from incite.models import Paper, RetrievalResult
-from incite.utils import get_best_device
 
 # Available cross-encoder configurations
 RERANKERS = {
@@ -133,7 +132,12 @@ class CrossEncoderReranker(Reranker):
             cache_dir: Directory to cache model weights
         """
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        if device is not None:
+            self.device = device
+        else:
+            from incite.utils import get_best_device
+
+            self.device = get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._cross_encoder = None
