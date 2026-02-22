@@ -2,6 +2,7 @@ import { Editor, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { InCiteClient } from "./api-client";
 import { CitationWatcher } from "./citation-watcher";
 import { ObsidianCitationStorage } from "./citation-storage";
+import { FrontmatterCitationStorage } from "./frontmatter-citation-storage";
 import { extractContext } from "./context-extractor";
 import { InCiteSettingTab } from "./settings";
 import { InCiteSidebarView, VIEW_TYPE_INCITE } from "./sidebar-view";
@@ -27,11 +28,13 @@ export default class InCitePlugin extends Plugin {
 	private watcher: CitationWatcher | null = null;
 	private lastEditor: Editor | null = null;
 	private tracker: CitationTracker | null = null;
-	private citationStorage: ObsidianCitationStorage | null = null;
+	private citationStorage: FrontmatterCitationStorage | null = null;
+	private legacyStorage: ObsidianCitationStorage | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.citationStorage = new ObsidianCitationStorage(this);
+		this.citationStorage = new FrontmatterCitationStorage(this.app);
+		this.legacyStorage = new ObsidianCitationStorage(this);
 
 		// Register the sidebar view
 		this.registerView(VIEW_TYPE_INCITE, (leaf) => {
@@ -76,6 +79,11 @@ export default class InCitePlugin extends Plugin {
 
 		// Settings tab
 		this.addSettingTab(new InCiteSettingTab(this.app, this));
+
+		// Fetch collections for cloud mode
+		if (this.settings.apiMode === "cloud") {
+			this.fetchCollections();
+		}
 	}
 
 	onunload(): void {
@@ -122,6 +130,11 @@ export default class InCitePlugin extends Plugin {
 		} else {
 			this.stopWatcher();
 		}
+
+		// Refresh collections when switching to cloud mode
+		if (this.settings.apiMode === "cloud") {
+			this.fetchCollections();
+		}
 	}
 
 	/** Initialize the citation tracker for the currently active file. */
@@ -131,6 +144,16 @@ export default class InCitePlugin extends Plugin {
 		const docKey = file?.path ?? "__no_file__";
 		this.tracker = new CitationTracker(this.citationStorage, docKey);
 		await this.tracker.load();
+
+		// Migrate from legacy plugin-data storage to frontmatter
+		if (this.tracker.count === 0 && this.legacyStorage) {
+			const legacy = await this.legacyStorage.load(docKey);
+			if (legacy.length > 0) {
+				await this.citationStorage.save(docKey, legacy);
+				await this.tracker.load();
+			}
+		}
+
 		this.refreshBibliography();
 	}
 
@@ -141,7 +164,8 @@ export default class InCitePlugin extends Plugin {
 		view.setBibliography(
 			this.tracker.getAll(),
 			(paperId) => this.removeCitation(paperId),
-			(format) => this.exportBibliography(format)
+			(format) => this.exportBibliography(format),
+			() => this.insertBibliography()
 		);
 	}
 
@@ -180,6 +204,44 @@ export default class InCitePlugin extends Plugin {
 		navigator.clipboard.writeText(output).then(() => {
 			new Notice(`${format.toUpperCase()} copied to clipboard (${citations.length} citations).`);
 		});
+	}
+
+	/** Insert APA-formatted bibliography at the current cursor position. */
+	private insertBibliography(): void {
+		const editor = this.lastEditor ?? this.app.workspace.activeEditor?.editor ?? null;
+		if (!editor) {
+			new Notice("No active editor to insert bibliography into.");
+			return;
+		}
+		if (!this.tracker || this.tracker.count === 0) {
+			new Notice("No citations to insert.");
+			return;
+		}
+
+		const text = exportFormattedText(this.tracker.getAll());
+		const cursor = editor.getCursor();
+		editor.replaceRange(text, cursor);
+
+		const newOffset = editor.posToOffset(cursor) + text.length;
+		editor.setCursor(editor.offsetToPos(newOffset));
+
+		new Notice(`Inserted bibliography (${this.tracker.count} citations).`);
+	}
+
+	/** Fetch collections from cloud and update sidebar dropdown. */
+	async fetchCollections(): Promise<void> {
+		try {
+			const collections = await this.client.getCollections();
+			const view = this.getSidebarView();
+			if (view) {
+				view.setCollections(collections, (collectionId) => {
+					this.settings.collectionId = collectionId;
+					this.saveSettings();
+				});
+			}
+		} catch {
+			// Collections are optional — silently ignore
+		}
 	}
 
 	/** Open or reveal the sidebar panel. */
@@ -248,7 +310,8 @@ export default class InCitePlugin extends Plugin {
 				queryText,
 				this.settings.k,
 				this.settings.authorBoost,
-				cursorSentenceIndex
+				cursorSentenceIndex,
+				this.settings.collectionId,
 			);
 			if (view) {
 				view.setResults(response.recommendations);

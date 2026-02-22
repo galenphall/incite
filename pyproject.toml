@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "incite-app"
-version = "0.1.0"
+name = "incite"
+version = "0.1.1"
 description = "Local-first citation recommendation system"
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,9 +24,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "sentence-transformers>=2.2.0",
-    "faiss-cpu>=1.7.0",
-    "rank-bm25>=0.2.2",
     "numpy>=1.24.0",
     "pyyaml>=6.0",
     "tqdm>=4.65.0",
@@ -34,9 +31,22 @@ dependencies = [
     "nltk>=3.8.0",
     "bibtexparser>=2.0.0b1",
     "python-dotenv>=1.0.0",
+    "rapidfuzz>=3.0.0",
+    "faiss-cpu>=1.7.0",
+    "rank-bm25>=0.2.2",
 ]
 
 [project.optional-dependencies]
+# Full ML (torch-based embedders via sentence-transformers)
+ml = [
+    "sentence-transformers>=2.2.0",
+]
+# ONNX inference only (no torch required)
+onnx = [
+    "onnxruntime>=1.16.0",
+    "tokenizers>=0.15.0",
+    "optimum[onnxruntime]>=1.14.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -44,7 +54,16 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+# Lightweight local server (ONNX + API, no torch)
+lite = [
+    "incite[onnx]",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.9",
+]
+# Full local server (torch + API)
 api = [
+    "incite[ml]",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "python-multipart>=0.0.9",
@@ -69,25 +88,17 @@ viz = [
 voyage = [
     "voyageai>=0.3.0",
 ]
-finetune = [
-    "datasets>=2.14.0",
-    "accelerate>=0.24.0",
-    "einops>=0.7.0",
-]
 pdf = [
     "pymupdf>=1.23.0",
 ]
 zotero = [
     "pyzotero",
 ]
-acquire = [
-    "playwright>=1.40.0",
-]
 tray = [
     "rumps>=0.4.0",
 ]
 all = [
-    "incite[dev,api,nlp,llm,webapp,viz,voyage,finetune,acquire,tray,pdf,zotero]",
+    "incite[dev,ml,onnx,api,nlp,llm,webapp,viz,voyage,tray,pdf,zotero]",
 ]
 
 [project.urls]

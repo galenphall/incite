@@ -7,7 +7,14 @@
     timing: null,
     error: null,
     settings: null,  // loaded from server on init
-    serverInfo: null  // from /health
+    serverInfo: null, // from /health
+    googleToken: null,
+    googleTokenFetchedAt: 0,
+    trackedCitations: [],
+    bibExpanded: true,
+    queryText: null,  // last query text for context display
+    collections: [],  // available collections (cloud mode only)
+    collectionId: null // selected collection ID for filtering
   };
 
   // ── Init ───────────────────────────────────────────────────
@@ -19,11 +26,30 @@
     btn.textContent = 'Connecting…';
 
     loadSettings(function() {
-      checkServer(function(ready) {
-        btn.disabled = false;
-        btn.textContent = 'Get Recommendations';
-      });
+      // Pre-fetch Google token for cloud mode before first health check
+      var ready = function() {
+        checkServer(function() {
+          btn.disabled = false;
+          btn.textContent = 'Get Recommendations';
+        });
+      };
+      if (state.settings.apiMode === 'cloud' && !state.settings.apiToken) {
+        getGoogleTokenCached().then(ready).catch(ready);
+      } else {
+        ready();
+      }
     });
+
+    // Load tracked citations from document properties
+    google.script.run
+      .withSuccessHandler(function(citations) {
+        state.trackedCitations = citations || [];
+        renderBibliography();
+      })
+      .withFailureHandler(function() {
+        state.trackedCitations = [];
+      })
+      .getCitations();
 
     // Re-check server health every 30s so status updates if server comes online
     // Skip health checks while a recommendation request is in flight to avoid
@@ -34,6 +60,11 @@
 
     btn.addEventListener('click', onRefresh);
     document.getElementById('btn-settings').addEventListener('click', onOpenSettings);
+
+    // Collection filter dropdown
+    document.getElementById('collection-select').addEventListener('change', function() {
+      state.collectionId = this.value || null;
+    });
 
     // Listen for Chrome extension hotkey trigger
     window.addEventListener('message', function(event) {
@@ -98,7 +129,7 @@
     return state.settings.apiMode === 'cloud' ? '/api/v1/recommend' : '/recommend';
   }
 
-  /** Return auth headers for the current API mode. */
+  /** Return auth headers (sync, only for manual mc_ tokens or local mode). */
   function getAuthHeaders() {
     var headers = { 'Content-Type': 'application/json' };
     if (state.settings.apiMode === 'cloud' && state.settings.apiToken) {
@@ -107,17 +138,88 @@
     return headers;
   }
 
+  var GOOGLE_TOKEN_MAX_AGE_MS = 45 * 60 * 1000; // 45 minutes
+
+  /** Get a cached Google OAuth token, refreshing if expired. Returns a Promise. */
+  function getGoogleTokenCached() {
+    var now = Date.now();
+    if (state.googleToken && (now - state.googleTokenFetchedAt) < GOOGLE_TOKEN_MAX_AGE_MS) {
+      return Promise.resolve(state.googleToken);
+    }
+    return new Promise(function(resolve, reject) {
+      google.script.run
+        .withSuccessHandler(function(token) {
+          state.googleToken = token;
+          state.googleTokenFetchedAt = Date.now();
+          resolve(token);
+        })
+        .withFailureHandler(function(err) {
+          if (isMultiAccountError(err)) {
+            reject(new Error(
+              'Multiple Google accounts detected. google.script.run cannot resolve ' +
+              'the correct account. Try using an Incognito window with a single account.'
+            ));
+          } else {
+            reject(err);
+          }
+        })
+        .getGoogleToken();
+    });
+  }
+
+  /** Return auth headers for the current API mode (async — uses Google token when no manual token). */
+  function getAuthHeadersAsync() {
+    var headers = { 'Content-Type': 'application/json' };
+    if (state.settings.apiMode !== 'cloud') {
+      return Promise.resolve(headers);
+    }
+    // Manual mc_ token takes priority
+    if (state.settings.apiToken) {
+      headers['Authorization'] = 'Bearer ' + state.settings.apiToken;
+      return Promise.resolve(headers);
+    }
+    // Otherwise use Google OAuth token
+    return getGoogleTokenCached().then(function(token) {
+      headers['Authorization'] = 'Bearer ' + token;
+      return headers;
+    });
+  }
+
+  /**
+   * Fetch wrapper that attaches auth headers and retries once on 401
+   * (clears cached Google token and re-fetches).
+   */
+  function fetchWithAuth(url, options, timeoutMs) {
+    options = options || {};
+    return getAuthHeadersAsync().then(function(headers) {
+      var opts = Object.assign({}, options, {
+        headers: Object.assign({}, options.headers || {}, headers)
+      });
+      return fetchWithTimeout(url, opts, timeoutMs);
+    }).then(function(resp) {
+      // On 401 with Google token, clear cache and retry once
+      if (resp.status === 401 && state.settings.apiMode === 'cloud'
+          && !state.settings.apiToken && state.googleToken) {
+        state.googleToken = null;
+        state.googleTokenFetchedAt = 0;
+        return getAuthHeadersAsync().then(function(headers) {
+          var opts = Object.assign({}, options, {
+            headers: Object.assign({}, options.headers || {}, headers)
+          });
+          return fetchWithTimeout(url, opts, timeoutMs);
+        });
+      }
+      return resp;
+    });
+  }
+
   // ── Server health check ────────────────────────────────────
 
   function checkServer(callback) {
     var base = getBaseUrl();
     var healthPath = state.settings.apiMode === 'cloud' ? '/api/v1/health' : '/health';
     var url = base + healthPath;
-    var headers = {};
-    if (state.settings.apiMode === 'cloud' && state.settings.apiToken) {
-      headers['Authorization'] = 'Bearer ' + state.settings.apiToken;
-    }
-    fetchWithTimeout(url, { headers: headers }, 5000)
+    fetchWithAuth(url, {}, 5000)
       .then(function(resp) { return resp.json(); })
       .then(function(data) {
         state.serverInfo = data;
@@ -128,6 +230,10 @@
         if (isReady) {
           var size = data.corpus_size != null ? ' (' + data.corpus_size + ' papers)' : '';
           showServerStatus('connected', label + size);
+          // Fetch collections in cloud mode
+          if (state.settings.apiMode === 'cloud') {
+            fetchCollections();
+          }
         } else if (data.status === 'no_library') {
           showServerStatus('loading', 'No library found — upload papers at inciteref.com');
         } else {
@@ -137,7 +243,7 @@
       })
       .catch(function(err) {
         if (state.settings.apiMode === 'cloud') {
-          showServerStatus('offline', 'Cannot reach cloud — check API token in Settings');
+          showServerStatus('offline', 'Cannot reach cloud — check connection or Settings');
         } else if (err && err.name === 'AbortError') {
           showServerStatus('offline', 'Server not responding — run: incite serve');
         } else {
@@ -158,6 +264,46 @@
     var bar = document.getElementById('status-bar');
     bar.textContent = message;
     bar.className = 'mc-status visible mc-server-' + level;
+  }
+
+  // ── Collections ──────────────────────────────────────────────
+
+  function fetchCollections() {
+    var base = getBaseUrl();
+    fetchWithAuth(base + '/api/v1/library/collections', {}, 5000)
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        state.collections = data.collections || [];
+        renderCollectionDropdown();
+      })
+      .catch(function() {
+        // Silently ignore — collections are optional
+      });
+  }
+
+  function renderCollectionDropdown() {
+    var filterEl = document.getElementById('collection-filter');
+    var selectEl = document.getElementById('collection-select');
+    if (!filterEl || !selectEl) return;
+
+    if (state.settings.apiMode !== 'cloud' || state.collections.length === 0) {
+      filterEl.style.display = 'none';
+      return;
+    }
+
+    // Rebuild options
+    selectEl.innerHTML = '<option value="">All papers</option>';
+    for (var i = 0; i < state.collections.length; i++) {
+      var c = state.collections[i];
+      var opt = document.createElement('option');
+      opt.value = String(c.id);
+      opt.textContent = c.name + ' (' + c.item_count + ')';
+      if (state.collectionId === String(c.id)) {
+        opt.selected = true;
+      }
+      selectEl.appendChild(opt);
+    }
+    filterEl.style.display = '';
   }
 
   // ── Get recommendations ────────────────────────────────────
@@ -213,6 +359,7 @@
   }
 
   function fetchRecommendations(context) {
+    state.queryText = context.text;
     var url = getBaseUrl() + getRecommendPath();
     var body = {
       query: context.text,
@@ -222,10 +369,12 @@
     if (context.cursorSentenceIndex !== undefined) {
       body.cursor_sentence_index = context.cursorSentenceIndex;
     }
+    if (state.collectionId) {
+      body.collection_id = state.collectionId;
+    }
 
-    fetchWithTimeout(url, {
+    fetchWithAuth(url, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body)
     }, 30000)
     .then(function(resp) {
@@ -249,7 +398,7 @@
         }
       } else {
         if (state.settings.apiMode === 'cloud') {
-          showError('Could not reach cloud at ' + base + '. Check API token in Settings. (' + err.message + ')');
+          showError('Could not reach cloud at ' + base + '. Check connection or Settings. (' + err.message + ')');
         } else {
           showError('Could not reach inCite server at ' + base + '. Is "incite serve" running? (' + err.message + ')');
         }
@@ -282,6 +431,10 @@
         // Brief visual feedback
         showStatus('Inserted: ' + citation);
         setTimeout(function() { showStatus(''); }, 2000);
+        // Track citation and update bibliography
+        addTrackedCitation(rec);
+        renderBibliography();
+        updateCitedBadges();
       })
       .withFailureHandler(function(err) {
         if (isMultiAccountError(err)) {
@@ -293,7 +446,24 @@
           showError('Could not insert citation: ' + err.message);
         }
       })
-      .insertCitation(citation);
+      .insertCitation(citation, rec);
+  }
+
+  /** Add a citation to local state (dedup by paper_id). */
+  function addTrackedCitation(rec) {
+    for (var i = 0; i < state.trackedCitations.length; i++) {
+      if (state.trackedCitations[i].paper_id === rec.paper_id) return;
+    }
+    state.trackedCitations.push({
+      paper_id: rec.paper_id,
+      bibtex_key: rec.bibtex_key || rec.paper_id,
+      title: rec.title,
+      authors: rec.authors || [],
+      year: rec.year,
+      doi: rec.doi,
+      journal: rec.journal,
+      insertedAt: Date.now()
+    });
   }
 
   // ── Settings ───────────────────────────────────────────────
@@ -338,6 +508,13 @@
     }
   }
 
+  /** Map confidence score to human-readable label. */
+  function confidenceLabel(score) {
+    if (score >= 0.55) return 'Strong';
+    if (score >= 0.35) return 'Good';
+    return 'Weak';
+  }
+
   function renderResults() {
     var container = document.getElementById('results-container');
     container.innerHTML = '';
@@ -352,6 +529,18 @@
       return;
     }
 
+    // Query context bar — show what text the recommendations are based on
+    if (state.queryText) {
+      var queryBar = document.createElement('div');
+      queryBar.className = 'mc-query-context';
+      var truncated = state.queryText.length > 80
+        ? state.queryText.slice(0, 80) + '…'
+        : state.queryText;
+      queryBar.innerHTML = '<strong>Query:</strong> ' + escapeHtml(truncated);
+      queryBar.title = state.queryText;
+      container.appendChild(queryBar);
+    }
+
     var showParagraphs = state.settings.showParagraphs;
 
     for (var i = 0; i < state.results.length; i++) {
@@ -359,7 +548,7 @@
       var card = document.createElement('div');
       card.className = 'mc-result';
 
-      // Header: rank + confidence
+      // Header: rank + confidence label
       var header = document.createElement('div');
       header.className = 'mc-result-header';
 
@@ -373,8 +562,8 @@
       confBadge.className = 'mc-confidence ' +
         (conf >= 0.55 ? 'mc-confidence-high' :
          conf >= 0.35 ? 'mc-confidence-mid' : 'mc-confidence-low');
-      confBadge.textContent = conf.toFixed(2);
-      confBadge.title = 'Confidence: ' + conf.toFixed(3);
+      confBadge.textContent = confidenceLabel(conf);
+      confBadge.title = 'Score: ' + conf.toFixed(3);
       header.appendChild(confBadge);
 
       card.appendChild(header);
@@ -400,26 +589,49 @@
         card.appendChild(meta);
       }
 
-      // Matched paragraph evidence
+      // Collapsible evidence snippets
       if (showParagraphs) {
-        if (rec.matched_paragraphs && rec.matched_paragraphs.length) {
-          rec.matched_paragraphs.forEach(function(snippet, idx) {
+        var hasEvidence = (rec.matched_paragraphs && rec.matched_paragraphs.length) || rec.matched_paragraph;
+        if (hasEvidence) {
+          // Toggle button
+          var toggleBtn = document.createElement('button');
+          toggleBtn.className = 'mc-evidence-toggle';
+          toggleBtn.textContent = 'Show evidence \u25BE';
+          card.appendChild(toggleBtn);
+
+          // Evidence container (collapsed by default)
+          var evidenceWrap = document.createElement('div');
+          evidenceWrap.className = 'mc-evidence-content';
+
+          if (rec.matched_paragraphs && rec.matched_paragraphs.length) {
+            rec.matched_paragraphs.forEach(function(snippet, idx) {
+              var para = document.createElement('div');
+              para.className = idx === 0 ? 'mc-paragraph' : 'mc-paragraph mc-paragraph-secondary';
+              if (snippet.score != null) {
+                var badge = document.createElement('span');
+                badge.className = 'mc-evidence-score';
+                badge.textContent = Math.round(snippet.score * 100) + '%';
+                para.appendChild(badge);
+              }
+              renderHighlightedText(snippet.text, para, 350);
+              evidenceWrap.appendChild(para);
+            });
+          } else if (rec.matched_paragraph) {
             var para = document.createElement('div');
-            para.className = idx === 0 ? 'mc-paragraph' : 'mc-paragraph mc-paragraph-secondary';
-            if (snippet.score != null) {
-              var badge = document.createElement('span');
-              badge.className = 'mc-evidence-score';
-              badge.textContent = Math.round(snippet.score * 100) + '%';
-              para.appendChild(badge);
-            }
-            renderHighlightedText(snippet.text, para, 350);
-            card.appendChild(para);
-          });
-        } else if (rec.matched_paragraph) {
-          var para = document.createElement('div');
-          para.className = 'mc-paragraph';
-          renderHighlightedText(rec.matched_paragraph, para, 350);
-          card.appendChild(para);
+            para.className = 'mc-paragraph';
+            renderHighlightedText(rec.matched_paragraph, para, 350);
+            evidenceWrap.appendChild(para);
+          }
+
+          card.appendChild(evidenceWrap);
+
+          // Wire up toggle
+          (function(btn, wrap) {
+            btn.addEventListener('click', function() {
+              var expanded = wrap.classList.toggle('expanded');
+              btn.textContent = expanded ? 'Hide evidence \u25B4' : 'Show evidence \u25BE';
+            });
+          })(toggleBtn, evidenceWrap);
         }
       }
 
@@ -445,6 +657,9 @@
       timingBar.textContent = state.timing.total_ms + ' ms';
       timingBar.style.display = 'block';
     }
+
+    // Show "Cited" badges on already-tracked papers
+    updateCitedBadges();
   }
 
   /**
@@ -505,5 +720,273 @@
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(str));
     return div.innerHTML;
+  }
+
+  // ── Bibliography ──────────────────────────────────────────────
+
+  /** Render the bibliography section below results. */
+  function renderBibliography() {
+    var section = document.getElementById('bibliography-section');
+    if (!section) return;
+    section.innerHTML = '';
+
+    var count = state.trackedCitations.length;
+    if (count === 0) return;
+
+    // Collapsible header
+    var header = document.createElement('div');
+    header.className = 'mc-bib-header';
+    header.addEventListener('click', function() {
+      state.bibExpanded = !state.bibExpanded;
+      renderBibliography();
+    });
+
+    var label = document.createElement('span');
+    label.className = 'mc-bib-header-label';
+    label.textContent = 'Bibliography (' + count + ' citation' + (count !== 1 ? 's' : '') + ')';
+    header.appendChild(label);
+
+    var toggle = document.createElement('span');
+    toggle.className = 'mc-bib-toggle' + (state.bibExpanded ? ' expanded' : '');
+    toggle.textContent = '\u25B6';
+    header.appendChild(toggle);
+
+    section.appendChild(header);
+
+    if (!state.bibExpanded) return;
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'mc-bib-body';
+
+    // Export buttons
+    var exportRow = document.createElement('div');
+    exportRow.className = 'mc-bib-export';
+
+    var btnBibtex = document.createElement('button');
+    btnBibtex.className = 'mc-copy-btn';
+    btnBibtex.textContent = 'Copy BibTeX';
+    btnBibtex.addEventListener('click', function() {
+      copyToClipboard(formatBibTeX(state.trackedCitations), btnBibtex);
+    });
+    exportRow.appendChild(btnBibtex);
+
+    var btnRis = document.createElement('button');
+    btnRis.className = 'mc-copy-btn';
+    btnRis.textContent = 'Copy RIS';
+    btnRis.addEventListener('click', function() {
+      copyToClipboard(formatRIS(state.trackedCitations), btnRis);
+    });
+    exportRow.appendChild(btnRis);
+
+    var btnApa = document.createElement('button');
+    btnApa.className = 'mc-copy-btn';
+    btnApa.textContent = 'Copy APA';
+    btnApa.addEventListener('click', function() {
+      copyToClipboard(formatAPA(state.trackedCitations), btnApa);
+    });
+    exportRow.appendChild(btnApa);
+
+    var btnInsert = document.createElement('button');
+    btnInsert.className = 'mc-copy-btn';
+    btnInsert.textContent = 'Insert';
+    btnInsert.addEventListener('click', function() {
+      var text = formatAPA(state.trackedCitations);
+      google.script.run
+        .withSuccessHandler(function() {
+          btnInsert.textContent = 'Inserted!';
+          setTimeout(function() { btnInsert.textContent = 'Insert'; }, 1500);
+        })
+        .withFailureHandler(function(err) {
+          if (isMultiAccountError(err)) {
+            showError(
+              'Multiple Google accounts detected. google.script.run cannot resolve ' +
+              'the correct account. Try using an Incognito window with a single account.'
+            );
+          } else {
+            showError('Could not insert bibliography: ' + err.message);
+          }
+        })
+        .insertBibliography(text);
+    });
+    exportRow.appendChild(btnInsert);
+
+    body.appendChild(exportRow);
+
+    // Citation entries
+    for (var i = 0; i < state.trackedCitations.length; i++) {
+      var cit = state.trackedCitations[i];
+      var entry = document.createElement('div');
+      entry.className = 'mc-bib-entry';
+
+      var textDiv = document.createElement('div');
+      textDiv.className = 'mc-bib-entry-text';
+
+      var titleSpan = document.createElement('div');
+      titleSpan.className = 'mc-bib-entry-title';
+      titleSpan.textContent = cit.title || 'Untitled';
+      textDiv.appendChild(titleSpan);
+
+      var metaParts = [];
+      if (cit.authors && cit.authors.length > 0) {
+        var names = cit.authors.slice(0, 3).join(', ');
+        if (cit.authors.length > 3) names += ' et al.';
+        metaParts.push(names);
+      }
+      if (cit.year) metaParts.push('(' + cit.year + ')');
+      if (metaParts.length > 0) {
+        var metaSpan = document.createElement('div');
+        metaSpan.className = 'mc-bib-entry-meta';
+        metaSpan.textContent = metaParts.join(' ');
+        textDiv.appendChild(metaSpan);
+      }
+
+      entry.appendChild(textDiv);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.className = 'mc-remove-btn';
+      removeBtn.textContent = 'Remove';
+      removeBtn.setAttribute('data-paper-id', cit.paper_id);
+      removeBtn.addEventListener('click', (function(paperId) {
+        return function() { onRemoveCitation(paperId); };
+      })(cit.paper_id));
+      entry.appendChild(removeBtn);
+
+      body.appendChild(entry);
+    }
+
+    section.appendChild(body);
+  }
+
+  /** Remove a citation from tracking. */
+  function onRemoveCitation(paperId) {
+    google.script.run
+      .withSuccessHandler(function(citations) {
+        state.trackedCitations = citations || [];
+        renderBibliography();
+        updateCitedBadges();
+      })
+      .withFailureHandler(function() {
+        // Remove locally even if server call fails
+        state.trackedCitations = state.trackedCitations.filter(function(c) {
+          return c.paper_id !== paperId;
+        });
+        renderBibliography();
+        updateCitedBadges();
+      })
+      .removeCitation(paperId);
+  }
+
+  /** Update "Cited" badges on currently displayed result cards. */
+  function updateCitedBadges() {
+    var citedIds = {};
+    for (var i = 0; i < state.trackedCitations.length; i++) {
+      citedIds[state.trackedCitations[i].paper_id] = true;
+    }
+    // Remove existing badges
+    var existing = document.querySelectorAll('.mc-cited-badge');
+    for (var i = 0; i < existing.length; i++) {
+      existing[i].parentNode.removeChild(existing[i]);
+    }
+    // Add badges to matching result cards
+    var container = document.getElementById('results-container');
+    var cards = container.querySelectorAll('.mc-result');
+    for (var i = 0; i < cards.length; i++) {
+      if (i < state.results.length && citedIds[state.results[i].paper_id]) {
+        var headerEl = cards[i].querySelector('.mc-result-header');
+        if (headerEl && !headerEl.querySelector('.mc-cited-badge')) {
+          var badge = document.createElement('span');
+          badge.className = 'mc-cited-badge';
+          badge.textContent = 'Cited';
+          headerEl.appendChild(badge);
+        }
+      }
+    }
+  }
+
+  /** Copy text to clipboard and show brief feedback on button. */
+  function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(function() {
+      var original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = original; }, 1500);
+    }).catch(function() {
+      // Fallback for older browsers
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      var original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = original; }, 1500);
+    });
+  }
+
+  // ── Export formatters ─────────────────────────────────────────
+
+  function formatBibTeX(citations) {
+    return citations.map(function(c) {
+      var key = c.bibtex_key || c.paper_id || 'unknown';
+      var authors = (c.authors || []).join(' and ');
+      var lines = ['@article{' + key + ','];
+      if (c.title) lines.push('  title = {' + c.title + '},');
+      if (authors) lines.push('  author = {' + authors + '},');
+      if (c.year) lines.push('  year = {' + c.year + '},');
+      if (c.doi) lines.push('  doi = {' + c.doi + '},');
+      if (c.journal) lines.push('  journal = {' + c.journal + '},');
+      lines.push('}');
+      return lines.join('\n');
+    }).join('\n\n');
+  }
+
+  function formatRIS(citations) {
+    return citations.map(function(c) {
+      var lines = ['TY  - JOUR'];
+      if (c.title) lines.push('TI  - ' + c.title);
+      (c.authors || []).forEach(function(a) { lines.push('AU  - ' + a); });
+      if (c.year) lines.push('PY  - ' + c.year);
+      if (c.doi) lines.push('DO  - ' + c.doi);
+      if (c.journal) lines.push('JO  - ' + c.journal);
+      lines.push('ER  -');
+      return lines.join('\n');
+    }).join('\n\n');
+  }
+
+  function formatAPA(citations) {
+    return citations.map(function(c) {
+      var parts = [];
+      // Authors
+      if (c.authors && c.authors.length > 0) {
+        var authorStrs = c.authors.map(function(name) {
+          var nameParts = name.trim().split(/\s+/);
+          if (nameParts.length < 2) return name;
+          var last = nameParts[nameParts.length - 1];
+          var initials = nameParts.slice(0, -1).map(function(n) {
+            return n.charAt(0).toUpperCase() + '.';
+          }).join(' ');
+          return last + ', ' + initials;
+        });
+        if (authorStrs.length === 1) {
+          parts.push(authorStrs[0]);
+        } else if (authorStrs.length === 2) {
+          parts.push(authorStrs[0] + ', & ' + authorStrs[1]);
+        } else {
+          parts.push(authorStrs.slice(0, -1).join(', ') + ', & ' + authorStrs[authorStrs.length - 1]);
+        }
+      }
+      // Year
+      parts.push('(' + (c.year || 'n.d.') + ').');
+      // Title
+      if (c.title) parts.push(c.title + '.');
+      // Journal
+      if (c.journal) parts.push(c.journal + '.');
+      // DOI
+      if (c.doi) parts.push('https://doi.org/' + c.doi);
+      return parts.join(' ');
+    }).join('\n\n');
   }
 </script>

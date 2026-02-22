@@ -6,8 +6,6 @@ shift that caused the v5 regression.
 """
 
 from incite.corpus.chunking import _build_paper_metadata_prefix
-from incite.finetuning.data_preparation import _paper_to_embedding_text
-from incite.finetuning.data_sources import _format_positive
 from incite.models import (
     Chunk,
     Paper,
@@ -46,34 +44,6 @@ class TestPaperEmbeddingConsistency:
             llm_description=paper.llm_description,
         )
         assert paper.to_embedding_text() == canonical
-
-    def test_data_preparation_matches_paper(self):
-        """_paper_to_embedding_text() delegates to Paper.to_embedding_text()."""
-        paper = _make_paper()
-        assert _paper_to_embedding_text(paper) == paper.to_embedding_text()
-
-    def test_format_positive_uses_dot_separator(self):
-        """_format_positive() must use '. ' (not [SEP])."""
-        result = _format_positive("Test Title", "Test abstract")
-        assert "[SEP]" not in result
-        assert ". " in result
-        assert result == "Test Title. Test abstract"
-
-    def test_format_positive_matches_canonical_no_metadata(self):
-        """_format_positive(title, abstract) produces same as canonical with no metadata."""
-        result = _format_positive("Test Title", "Test abstract")
-        canonical = format_paper_embedding_text(
-            title="Test Title",
-            abstract="Test abstract",
-            include_abstract=True,
-            include_metadata=True,
-        )
-        assert result == canonical
-
-    def test_format_positive_title_only(self):
-        """_format_positive with empty abstract returns just title."""
-        result = _format_positive("Test Title", "")
-        assert result == "Test Title"
 
 
 class TestAuthorFormatConsistency:

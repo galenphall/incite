@@ -15,6 +15,7 @@ export interface InCiteSettings {
 	autoDetectEnabled: boolean;
 	debounceMs: number;
 	showParagraphs: boolean;
+	collectionId: string | null;
 }
 
 /** Default settings shared across all plugins. */
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: InCiteSettings = {
 	autoDetectEnabled: false,
 	debounceMs: 500,
 	showParagraphs: true,
+	collectionId: null,
 };
 
 /** Get the active API URL based on the current mode. */
@@ -117,6 +119,12 @@ export interface PaperMetadata {
 	url?: string;
 	arxiv_id?: string;
 	pdf_url?: string;
+	full_text?: string;
+	structured_text?: {
+		sections: { heading?: string; paragraphs: string[] }[];
+		extraction_method: string;
+		source_hostname: string;
+	};
 }
 
 /** Request to save papers to the user's library. */
@@ -165,4 +173,32 @@ export interface Tag {
 	id: string;
 	name: string;
 	color?: string | null;
+}
+
+/** Cloud library processing status. */
+export interface LibraryStatusResponse {
+	library_status: string;
+	num_papers: number;
+	num_chunks: number;
+	grobid_fulltext_papers: number;
+	grobid_fulltext_chunks: number;
+	abstract_only_papers: number;
+	job_status?: string;
+	stage?: string;
+	current?: number;
+	total?: number;
+	error?: string;
+	collections?: Collection[];
+}
+
+/** Local server configuration. */
+export interface ServerConfigResponse {
+	method: string;
+	embedder: string;
+	mode: string;
+	two_stage: boolean;
+	available_embedders: string[];
+	available_methods: string[];
+	available_modes: string[];
+	alpha?: number;
 }

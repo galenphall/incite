@@ -20,6 +20,7 @@ function getEl(id: string): HTMLElement {
 export function renderBibliography(
 	tracker: CitationTracker,
 	onRemove: (paperId: string) => Promise<void>,
+	onInsert: () => Promise<void>,
 ): void {
 	let section = document.getElementById("bibliographySection");
 	if (!section) {
@@ -64,6 +65,18 @@ export function renderBibliography(
 
 	const apaBtn = createExportButton("Copy APA", () => exportFormattedText(citations));
 	exportRow.appendChild(apaBtn);
+
+	const insertBtn = document.createElement("button");
+	insertBtn.className = "mc-copy-btn";
+	insertBtn.textContent = "Insert";
+	insertBtn.addEventListener("click", async () => {
+		await onInsert();
+		insertBtn.textContent = "Inserted!";
+		setTimeout(() => {
+			insertBtn.textContent = "Insert";
+		}, 1500);
+	});
+	exportRow.appendChild(insertBtn);
 
 	body.appendChild(exportRow);
 

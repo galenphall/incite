@@ -103,8 +103,8 @@ def compute_umap_projection(
     embeddings: np.ndarray,
     paper_metadata: dict[str, dict],
     embedder_type: str,
-    n_neighbors: int = 15,
-    min_dist: float = 0.1,
+    n_neighbors: int = 25,
+    min_dist: float = 0.03,
     metric: str = "cosine",
     random_state: int = 42,
 ) -> UMAPProjection:
@@ -164,8 +164,8 @@ def compute_umap_projection_with_model(
     embeddings: np.ndarray,
     paper_metadata: dict[str, dict],
     embedder_type: str,
-    n_neighbors: int = 15,
-    min_dist: float = 0.1,
+    n_neighbors: int = 25,
+    min_dist: float = 0.03,
     metric: str = "cosine",
     random_state: int = 42,
 ) -> tuple["UMAPProjection", object]:

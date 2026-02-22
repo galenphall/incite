@@ -30,6 +30,13 @@
     </div>
   </div>
 
+  <!-- Collection filter (cloud mode only, hidden by default) -->
+  <div id="collection-filter" class="mc-collection-filter" style="display:none;">
+    <select id="collection-select" class="mc-collection-select">
+      <option value="">All papers</option>
+    </select>
+  </div>
+
   <!-- Action bar -->
   <div class="mc-action-bar">
     <button id="btn-refresh" class="mc-btn">Get Recommendations</button>
@@ -48,6 +55,9 @@
 
   <!-- Timing footer -->
   <div id="timing-bar" class="mc-timing" style="display:none;"></div>
+
+  <!-- Bibliography section (populated by JS) -->
+  <div id="bibliography-section"></div>
 
   <?!= include('src/Sidebar.js'); ?>
 </body>

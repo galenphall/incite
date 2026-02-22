@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import type { Recommendation, InCiteSettings, TrackedCitation } from "./types";
+import type { Collection } from "@incite/shared";
 import { confidenceLevel } from "./types";
 
 export const VIEW_TYPE_INCITE = "incite-sidebar";
@@ -14,10 +15,15 @@ export class InCiteSidebarView extends ItemView {
 	private errorMessage: string | null = null;
 	selectedRecs: Map<string, Recommendation> = new Map();
 
+	// Collections
+	private collections: Collection[] = [];
+	private onCollectionChange: ((collectionId: string | null) => void) | null = null;
+
 	// Bibliography callbacks
 	private trackedCitations: TrackedCitation[] = [];
 	private onRemoveCitation: ((paperId: string) => void) | null = null;
 	private onExportBibliography: ((format: string) => void) | null = null;
+	private onInsertBibliography: (() => void) | null = null;
 	private bibExpanded = false;
 
 	constructor(
@@ -59,15 +65,27 @@ export class InCiteSidebarView extends ItemView {
 		this.settings = settings;
 	}
 
+	/** Set available collections and change handler. */
+	setCollections(
+		collections: Collection[],
+		onChange: (collectionId: string | null) => void,
+	): void {
+		this.collections = collections;
+		this.onCollectionChange = onChange;
+		this.render();
+	}
+
 	/** Set bibliography data and callbacks. */
 	setBibliography(
 		citations: TrackedCitation[],
 		onRemove: (paperId: string) => void,
-		onExport: (format: string) => void
+		onExport: (format: string) => void,
+		onInsert: () => void
 	): void {
 		this.trackedCitations = citations;
 		this.onRemoveCitation = onRemove;
 		this.onExportBibliography = onExport;
+		this.onInsertBibliography = onInsert;
 		this.render();
 	}
 
@@ -108,6 +126,31 @@ export class InCiteSidebarView extends ItemView {
 		container.createEl("div", { cls: "mayacite-header" }, (header) => {
 			header.createEl("h4", { text: "inCite" });
 		});
+
+		// Collection filter (cloud mode only)
+		if (this.settings.apiMode === "cloud" && this.collections.length > 0) {
+			container.createEl("div", { cls: "mayacite-collection-filter" }, (filterEl) => {
+				const selectEl = filterEl.createEl("select", {
+					cls: "mayacite-collection-select",
+				});
+				const allOpt = selectEl.createEl("option", { text: "All papers", value: "" });
+				if (!this.settings.collectionId) allOpt.selected = true;
+
+				for (const c of this.collections) {
+					const opt = selectEl.createEl("option", {
+						text: `${c.name} (${c.item_count})`,
+						value: String(c.id),
+					});
+					if (this.settings.collectionId === String(c.id)) {
+						opt.selected = true;
+					}
+				}
+				selectEl.addEventListener("change", () => {
+					const val = selectEl.value || null;
+					this.onCollectionChange?.(val);
+				});
+			});
+		}
 
 		if (this.loading) {
 			container.createEl("div", { cls: "mayacite-loading" }, (el) => {
@@ -172,10 +215,11 @@ export class InCiteSidebarView extends ItemView {
 				const conf = rec.confidence ?? 0;
 				const level = confidenceLevel(conf);
 				const confClass = `mayacite-confidence-${level}`;
+				const confLabel = conf >= 0.55 ? "Strong" : conf >= 0.35 ? "Good" : "Weak";
 				el.createEl("span", {
 					cls: `mayacite-confidence ${confClass}`,
-					text: conf.toFixed(2),
-					attr: { title: `Confidence: ${conf.toFixed(3)}` },
+					text: confLabel,
+					attr: { title: `Score: ${conf.toFixed(3)}` },
 				});
 			});
 
@@ -200,26 +244,42 @@ export class InCiteSidebarView extends ItemView {
 				});
 			}
 
-			// Matched paragraph evidence (with **bold** highlighting)
+			// Collapsible evidence snippets
 			if (this.settings.showParagraphs) {
-				if (rec.matched_paragraphs?.length) {
-					rec.matched_paragraphs.forEach((snippet, idx) => {
-						const blockquote = item.createEl("blockquote", {
-							cls: idx === 0 ? "mayacite-paragraph" : "mayacite-paragraph mayacite-paragraph-secondary",
-						});
-						if (snippet.score != null) {
-							blockquote.createEl("span", {
-								cls: "mayacite-evidence-score",
-								text: `${(snippet.score * 100).toFixed(0)}%`,
+				const hasEvidence = rec.matched_paragraphs?.length || rec.matched_paragraph;
+				if (hasEvidence) {
+					const toggleBtn = item.createEl("button", {
+						cls: "mayacite-evidence-toggle",
+						text: "Show evidence \u25BE",
+					});
+					const evidenceWrap = item.createEl("div", {
+						cls: "mayacite-evidence-content",
+					});
+
+					if (rec.matched_paragraphs?.length) {
+						rec.matched_paragraphs.forEach((snippet, idx) => {
+							const blockquote = evidenceWrap.createEl("blockquote", {
+								cls: idx === 0 ? "mayacite-paragraph" : "mayacite-paragraph mayacite-paragraph-secondary",
 							});
-						}
-						this.renderHighlightedText(snippet.text, blockquote, 350);
+							if (snippet.score != null) {
+								blockquote.createEl("span", {
+									cls: "mayacite-evidence-score",
+									text: `${(snippet.score * 100).toFixed(0)}%`,
+								});
+							}
+							this.renderHighlightedText(snippet.text, blockquote, 350);
+						});
+					} else if (rec.matched_paragraph) {
+						const blockquote = evidenceWrap.createEl("blockquote", {
+							cls: "mayacite-paragraph",
+						});
+						this.renderHighlightedText(rec.matched_paragraph, blockquote, 350);
+					}
+
+					toggleBtn.addEventListener("click", () => {
+						const expanded = evidenceWrap.classList.toggle("expanded");
+						toggleBtn.textContent = expanded ? "Hide evidence \u25B4" : "Show evidence \u25BE";
 					});
-				} else if (rec.matched_paragraph) {
-					const blockquote = item.createEl("blockquote", {
-						cls: "mayacite-paragraph",
-					});
-					this.renderHighlightedText(rec.matched_paragraph, blockquote, 350);
 				}
 			}
 
@@ -331,6 +391,15 @@ export class InCiteSidebarView extends ItemView {
 				});
 				btn.addEventListener("click", () => {
 					this.onExportBibliography!(fmt.toLowerCase());
+				});
+			}
+			if (this.onInsertBibliography) {
+				const insertBtn = exportRow.createEl("button", {
+					cls: "mayacite-export-btn",
+					text: "Insert",
+				});
+				insertBtn.addEventListener("click", () => {
+					this.onInsertBibliography!();
 				});
 			}
 		}

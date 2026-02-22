@@ -221,6 +221,7 @@ def load_chunks(path: str | Path, filter_bibliography: bool = True) -> list[Chun
                     section=data.get("section"),
                     char_offset=data.get("char_offset", 0),
                     page_number=data.get("page_number"),
+                    source=data.get("source"),
                     context_text=data.get("context_text"),
                     parent_text=data.get("parent_text"),
                 )
@@ -250,6 +251,7 @@ def save_chunks(chunks: list[Chunk], path: str | Path) -> None:
                 "section": chunk.section,
                 "char_offset": chunk.char_offset,
                 "page_number": chunk.page_number,
+                "source": chunk.source,
                 "context_text": chunk.context_text,
                 "parent_text": chunk.parent_text,
             }

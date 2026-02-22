@@ -3,11 +3,16 @@
 from typing import Optional
 
 import numpy as np
-import torch
 from tqdm import tqdm
 
 from incite.embeddings.base import BaseEmbedder
-from incite.utils import get_best_device
+
+
+def _get_best_device() -> str:
+    """Lazy wrapper for get_best_device() to avoid top-level torch import."""
+    from incite.utils import get_best_device
+
+    return get_best_device()
 
 
 class SPECTEREmbedder(BaseEmbedder):
@@ -32,7 +37,7 @@ class SPECTEREmbedder(BaseEmbedder):
         super().__init__()
         self.model_name = model_name
         self.adapter_name = adapter_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -82,6 +87,8 @@ class SPECTEREmbedder(BaseEmbedder):
         if show_progress:
             iterator = tqdm(iterator, desc="Embedding")
 
+        import torch
+
         with torch.no_grad():
             for i in iterator:
                 batch = texts[i : i + self.batch_size]
@@ -122,7 +129,7 @@ class SciNCLEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -176,7 +183,7 @@ class ModernBERTEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -260,7 +267,7 @@ class MiniLMEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -314,7 +321,7 @@ class E5Embedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -404,7 +411,7 @@ class GraniteEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None
@@ -495,7 +502,7 @@ class NomicEmbedder(BaseEmbedder):
     ):
         super().__init__()
         self.model_name = model_name
-        self.device = device if device is not None else get_best_device()
+        self.device = device if device is not None else _get_best_device()
         self.batch_size = batch_size
         self.cache_dir = cache_dir
         self._model = None

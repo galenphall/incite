@@ -22,21 +22,12 @@ export function loadClientConfig(): ClientConfig {
 	};
 }
 
-/** Load display settings. */
-export function loadDisplaySettings(): { k: number; authorBoost: number; showParagraphs: boolean } {
-	return {
-		k: getPref("k", ZOTERO_DEFAULTS.k),
-		authorBoost: getPref("authorBoost", ZOTERO_DEFAULTS.authorBoost),
-		showParagraphs: getPref("showParagraphs", ZOTERO_DEFAULTS.showParagraphs),
-	};
-}
-
 /** Register the preferences pane in Zotero's settings UI. */
 export function registerPreferencesPane(): void {
 	Zotero.PreferencePanes.register({
 		pluginID: PLUGIN_ID,
 		src: rootURI + "content/preferences.xhtml",
-		l10nID: "incite-prefs-title",
+		label: "inCite",
 		image: rootURI + "content/icons/icon16.svg",
 	});
 }

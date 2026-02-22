@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>inCite Control Center</title>
+  <style>/* INLINE_CSS_PLACEHOLDER */</style>
+</head>
+<body>
+  <header id="header">
+    <div class="header-left">
+      <span class="logo-text">inCite</span>
+      <span class="header-subtitle">Control Center</span>
+    </div>
+    <div class="header-right">
+      <span id="status-dot" class="status-dot" title="Checking connection..."></span>
+      <span id="status-label" class="status-label">Checking...</span>
+      <button id="btn-settings-toggle" class="settings-link">Settings</button>
+    </div>
+  </header>
+
+  <div id="settings-panel" class="settings-panel" style="display:none;">
+    <div class="settings-header">
+      <h3>Settings</h3>
+    </div>
+    <div class="settings-body">
+      <label class="settings-label">
+        API Mode
+        <select id="setting-apiMode" class="settings-input">
+          <option value="local">Local</option>
+          <option value="cloud">Cloud</option>
+        </select>
+      </label>
+      <label class="settings-label" id="label-localUrl">
+        Local Server URL
+        <input type="text" id="setting-localUrl" class="settings-input" placeholder="http://127.0.0.1:8230">
+      </label>
+      <label class="settings-label" id="label-cloudUrl" style="display:none;">
+        Cloud Server URL
+        <input type="text" id="setting-cloudUrl" class="settings-input" placeholder="https://inciteref.com">
+      </label>
+      <label class="settings-label" id="label-apiToken" style="display:none;">
+        API Token
+        <input type="password" id="setting-apiToken" class="settings-input" placeholder="Your API token">
+      </label>
+      <button id="btn-settings-save" class="btn-primary btn-settings-save">Save Settings</button>
+    </div>
+  </div>
+
+  <!-- Local mode view -->
+  <div id="local-view" class="mode-view">
+    <div id="local-connected" style="display:none;">
+      <div class="status-card">
+        <div class="status-card-header">Server Status</div>
+        <div class="status-row"><span class="status-key">Corpus</span><span id="local-corpus" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Embedder</span><span id="local-embedder" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Method</span><span id="local-method" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Mode</span><span id="local-mode" class="status-value">—</span></div>
+      </div>
+    </div>
+    <div id="local-disconnected">
+      <div class="setup-card">
+        <div class="status-card-header">Setup</div>
+        <div class="setup-row">
+          <span class="setup-label">Python</span>
+          <span id="setup-python-status" class="setup-status"><span class="setup-spinner"></span> Checking...</span>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">inCite</span>
+          <span id="setup-incite-status" class="setup-status"><span class="setup-spinner"></span> Checking...</span>
+        </div>
+        <div id="setup-install-row" class="setup-actions" style="display:none;">
+          <button id="btn-install-incite" class="btn-primary btn-sm">Install inCite</button>
+        </div>
+        <div id="setup-install-progress" class="setup-progress" style="display:none;">
+          <span id="install-progress-text" class="setup-progress-text">Installing...</span>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">Server</span>
+          <span id="setup-server-status" class="setup-status">Stopped</span>
+        </div>
+        <div id="setup-server-actions" class="setup-actions">
+          <button id="btn-start-server" class="btn-primary btn-sm" disabled>Start Server</button>
+          <button id="btn-stop-server" class="btn-primary btn-sm btn-danger" style="display:none;">Stop Server</button>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">Library</span>
+          <span id="setup-process-status" class="setup-status">Not processed</span>
+        </div>
+        <div id="setup-process-actions" class="setup-actions">
+          <button id="btn-process-library" class="btn-primary btn-sm" disabled>Process Library</button>
+        </div>
+        <div id="setup-process-progress" class="setup-progress" style="display:none;">
+          <span id="process-progress-text" class="setup-progress-text">Processing...</span>
+        </div>
+      </div>
+      <div id="setup-python-missing" class="info-card" style="display:none; margin-top:12px;">
+        <div class="info-card-body">
+          <p>Python 3 is required. Download it from <a href="#" onclick="window.open('https://www.python.org/downloads/'); return false;">python.org</a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud mode view -->
+  <div id="cloud-view" class="mode-view" style="display:none;">
+    <div id="cloud-connected" style="display:none;">
+      <div class="status-card">
+        <div class="status-card-header">Library Status</div>
+        <div class="status-row"><span class="status-key">Status</span><span id="cloud-status" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Papers</span><span id="cloud-papers" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Chunks</span><span id="cloud-chunks" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Full-text papers</span><span id="cloud-fulltext-papers" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Full-text chunks</span><span id="cloud-fulltext-chunks" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Abstract-only</span><span id="cloud-abstract-only" class="status-value">—</span></div>
+      </div>
+      <div id="cloud-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="progress-stage">Processing</span> <span id="progress-count"></span></div>
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+      </div>
+      <div class="btn-row">
+        <button id="btn-upload" class="btn-primary btn-action">Upload Library</button>
+        <button id="btn-sync" class="btn-primary btn-action btn-secondary-action">Sync Library</button>
+      </div>
+      <div id="upload-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="upload-stage">Uploading</span> <span id="upload-count"></span></div>
+        <div class="progress-bar"><div id="upload-fill" class="progress-fill"></div></div>
+      </div>
+      <div id="sync-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="sync-stage">Syncing</span> <span id="sync-count"></span></div>
+      </div>
+    </div>
+    <div id="cloud-disconnected" class="info-card">
+      <div class="info-card-icon">!</div>
+      <div class="info-card-title">Not Connected</div>
+      <div class="info-card-body">
+        <p>Enter your API token in Settings to connect to inCite Cloud.</p>
+      </div>
+    </div>
+    <div id="cloud-error" class="error-card" style="display:none;">
+      <div class="error-card-title">Error</div>
+      <div id="cloud-error-message" class="error-card-body"></div>
+    </div>
+  </div>
+
+  <script>/* INLINE_JS_PLACEHOLDER */</script>
+</body>
+</html>

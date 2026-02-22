@@ -5,9 +5,21 @@ var chromeHandle;
 
 function install(data, reason) {}
 
-async function startup({ id, version, resourceURI, rootURI }) {
+async function startup({ id, version, resourceURI, rootURI: _rootURI }) {
+	// Expose rootURI globally so the bundled plugin code can access it
+	globalThis.rootURI = _rootURI;
+
+	// Register chrome so chrome://zotero-incite/content/ URLs resolve
+	var aomStartup = Components.classes[
+		"@mozilla.org/addons/addon-manager-startup;1"
+	].getService(Components.interfaces.amIAddonManagerStartup);
+	var manifestURI = Services.io.newURI(_rootURI + "manifest.json");
+	chromeHandle = aomStartup.registerChrome(manifestURI, [
+		["content", "zotero-incite", _rootURI + "content/"],
+	]);
+
 	// Load the bundled IIFE script which sets globalThis.InciteZotero
-	Services.scriptloader.loadSubScript(rootURI + "content/scripts/index.js");
+	Services.scriptloader.loadSubScript(_rootURI + "content/scripts/index.js");
 
 	InciteZotero.hooks.onStartup();
 
@@ -33,6 +45,11 @@ function shutdown({ id, version, resourceURI, rootURI }, reason) {
 	// Unload from all open windows
 	for (const win of Zotero.getMainWindows()) {
 		InciteZotero.hooks.onMainWindowUnload(win);
+	}
+
+	if (chromeHandle) {
+		chromeHandle.destruct();
+		chromeHandle = null;
 	}
 }
 

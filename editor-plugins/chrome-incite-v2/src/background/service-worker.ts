@@ -374,9 +374,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 async function handleMessage(message: ExtendedPanelMessage, _sender: chrome.runtime.MessageSender) {
   switch (message.type) {
     case "GET_RECOMMENDATIONS":
-      return await handleGetRecommendations();
+      return await handleGetRecommendations((message as { type: string; collectionId?: string | null }).collectionId);
     case "GET_RECOMMENDATIONS_FOR_TEXT":
-      return await handleGetRecommendationsForText((message as { type: string; text: string }).text);
+      return await handleGetRecommendationsForText((message as { type: string; text: string; collectionId?: string | null }).text, (message as { type: string; text: string; collectionId?: string | null }).collectionId);
     case "CHECK_HEALTH":
       return await handleCheckHealth();
     case "GET_SETTINGS":
@@ -456,8 +456,52 @@ async function handleGetDetectedPapers() {
             .filter((c): c is string => !!c);
         }
 
-        function inlineExtractFullText(): string | null {
-          const selectors = [
+        const NOISE_SELECTORS = [
+          "nav", "footer", ".cookie-consent", ".cookie-banner", ".cookie-notice",
+          ".share-tools", ".share-widget", ".social-share",
+          ".author-info", ".author-notes",
+          ".metrics", ".altmetric",
+          ".supplementary-data", ".supplementary-materials",
+          '[role="navigation"]', '[role="banner"]',
+          ".sidebar", "#sidebar",
+          ".advertisement", ".ad-container",
+          ".related-articles", ".recommended-articles",
+          ".references", "#references",
+          ".footnotes", ".endnotes",
+          ".bibliography", ".Footnotes", ".Tail",
+          ".RelatedContent", ".ReferencedArticles",
+          ".ListArticles", ".Copyright",
+          "figure", ".figure", ".table-wrap",
+        ].join(", ");
+
+        const BLOCK_TAGS = new Set([
+          "div", "section", "article", "aside", "blockquote",
+          "table", "figure", "ul", "ol", "pre", "form",
+          "header", "footer", "nav", "main",
+        ]);
+
+        const CITATION_RE = /\[(\d+(?:[,\s]*\d+)*(?:\s*[-–]\s*\d+)?)\]/g;
+        const SUPERSCRIPT_RE = /[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g;
+
+        function cleanPara(text: string): string {
+          return text
+            .replace(CITATION_RE, "")
+            .replace(SUPERSCRIPT_RE, "")
+            .replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, " ")
+            .replace(/ ([.,;:!?])/g, "$1")
+            .replace(/  +/g, " ")
+            .trim();
+        }
+
+        function isLeafTextBlock(el: Element): boolean {
+          for (const child of el.children) {
+            if (BLOCK_TAGS.has(child.tagName.toLowerCase())) return false;
+          }
+          return true;
+        }
+
+        function inlineExtractStructured(): { full_text: string | undefined; structured_text: any } {
+          const containerSelectors = [
             ".jig-ncbiinpagenav .tsec",
             "#body .section",
             "article .c-article-body",
@@ -465,28 +509,84 @@ async function handleGetDetectedPapers() {
             "#article-body",
             ".article-section__content",
             ".article-content",
-            '[role="main"] p',
-            "article p",
-            "main p",
+            ".Body",
+            '[role="main"]',
+            "article",
+            "main",
           ];
-          for (const selector of selectors) {
-            const elements = document.querySelectorAll(selector);
-            if (elements.length === 0) continue;
-            const paragraphs: string[] = [];
+
+          const hostname = location.hostname ?? "";
+          let extractionMethod = "generic";
+          if (hostname.includes("ncbi.nlm.nih.gov")) extractionMethod = "pmc";
+          else if (hostname.includes("sciencedirect.com")) extractionMethod = "elsevier";
+          else if (hostname.includes("nature.com") || hostname.includes("springer.com")) extractionMethod = "springer";
+          else if (hostname.includes("wiley.com")) extractionMethod = "wiley";
+
+          for (const sel of containerSelectors) {
+            const containers = document.querySelectorAll(sel);
+            if (containers.length === 0) continue;
+
+            const wrapper = document.createElement("div");
+            for (const c of containers) {
+              wrapper.appendChild(c.cloneNode(true));
+            }
+            const noiseEls = wrapper.querySelectorAll(NOISE_SELECTORS);
+            for (const el of noiseEls) el.remove();
+
+            const sections: { heading?: string; paragraphs: string[] }[] = [];
+            let cur: { heading?: string; paragraphs: string[] } = { paragraphs: [] };
+
+            const elements = wrapper.querySelectorAll("h2, h3, h4, p, div");
             for (const el of elements) {
-              if (el.tagName !== "P") {
-                const ps = el.querySelectorAll("p");
-                for (const p of ps) {
-                  const text = p.textContent?.trim();
-                  if (text && text.length > 30) paragraphs.push(text);
-                }
+              const tag = el.tagName.toLowerCase();
+              if (tag === "h2" || tag === "h3" || tag === "h4") {
+                if (cur.paragraphs.length > 0) sections.push(cur);
+                const h = el.textContent?.trim() ?? "";
+                cur = { heading: h || undefined, paragraphs: [] };
               } else {
-                const text = el.textContent?.trim();
-                if (text && text.length > 30) paragraphs.push(text);
+                if (tag === "div" && !isLeafTextBlock(el)) continue;
+                const raw = el.textContent?.trim();
+                if (raw && raw.length > 30) {
+                  const cleaned = cleanPara(raw);
+                  if (cleaned.length > 30) cur.paragraphs.push(cleaned);
+                }
               }
             }
-            const fullText = paragraphs.join("\n\n");
-            if (fullText.length >= 200) return fullText;
+            if (cur.paragraphs.length > 0) sections.push(cur);
+
+            const allParas: string[] = [];
+            for (const s of sections) for (const p of s.paragraphs) allParas.push(p);
+            const fullText = allParas.join("\n\n");
+
+            if (fullText.length >= 200) {
+              return {
+                full_text: fullText,
+                structured_text: { sections, extraction_method: extractionMethod, source_hostname: hostname },
+              };
+            }
+          }
+          return { full_text: undefined, structured_text: undefined };
+        }
+
+        function extractAbstractFromDom(): string | null {
+          const selectors = [
+            ".Abstracts .abstract.author",
+            ".abstract-content",
+            '[class*="abstract"] p',
+            "#abstract p",
+            ".hlFld-Abstract p",
+            ".abstractSection",
+          ];
+          for (const sel of selectors) {
+            const els = document.querySelectorAll(sel);
+            if (els.length === 0) continue;
+            const texts: string[] = [];
+            for (const el of els) {
+              const text = el.textContent?.trim();
+              if (text && text.length > 30) texts.push(cleanPara(text));
+            }
+            const combined = texts.join(" ");
+            if (combined.length > 100) return combined.replace(/^Abstract\s*/i, "");
           }
           return null;
         }
@@ -496,12 +596,18 @@ async function handleGetDetectedPapers() {
 
         const authors = getAllMeta("citation_author");
         const doi = getMeta(["citation_doi", "DC.Identifier"]) ?? undefined;
-        const abstract = getMeta(["citation_abstract", "DC.Description", "og:description"]) ?? undefined;
+        let abstract = getMeta(["citation_abstract", "DC.Description", "og:description"]) ?? undefined;
+        if (!abstract || abstract.length < 200) {
+          const domAbstract = extractAbstractFromDom();
+          if (domAbstract && domAbstract.length > (abstract?.length ?? 0)) {
+            abstract = domAbstract;
+          }
+        }
         const journal = getMeta(["citation_journal_title", "DC.Source"]) ?? undefined;
         const dateStr = getMeta(["citation_date", "citation_publication_date", "DC.Date"]);
         const year = dateStr ? parseInt(dateStr.match(/(\d{4})/)?.[1] ?? "", 10) || undefined : undefined;
         const pdf_url = getMeta(["citation_pdf_url"]) ?? undefined;
-        const full_text = inlineExtractFullText() ?? undefined;
+        const { full_text, structured_text } = inlineExtractStructured();
 
         return {
           papers: [{
@@ -514,6 +620,7 @@ async function handleGetDetectedPapers() {
             url: location.href,
             pdf_url,
             full_text,
+            structured_text,
           }],
           type: "single",
         };
@@ -688,7 +795,7 @@ async function getContextFromTab(tab: chrome.tabs.Tab): Promise<string> {
 
 // --- Handler implementations ---
 
-async function handleGetRecommendations() {
+async function handleGetRecommendations(collectionId?: string | null) {
   const tab = await getActiveTab();
   if (!tab) return { type: "RECOMMENDATIONS_RESULT", error: "No active tab" };
 
@@ -701,11 +808,11 @@ async function handleGetRecommendations() {
   }
 
   const apiClient = await getClient();
-  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost);
+  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost, undefined, collectionId);
   return { type: "RECOMMENDATIONS_RESULT", response };
 }
 
-async function handleGetRecommendationsForText(text: string) {
+async function handleGetRecommendationsForText(text: string, collectionId?: string | null) {
   const settings = await loadSettings();
   const stripped = stripCitations(text);
 
@@ -714,7 +821,7 @@ async function handleGetRecommendationsForText(text: string) {
   }
 
   const apiClient = await getClient();
-  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost);
+  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost, undefined, collectionId);
   return { type: "RECOMMENDATIONS_RESULT", response };
 }
 

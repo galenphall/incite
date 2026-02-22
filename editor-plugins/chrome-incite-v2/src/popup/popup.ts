@@ -142,6 +142,10 @@ function render() {
       break;
     case "not-signed-in":
       root.innerHTML = renderNotSignedIn();
+      document.getElementById("open-options")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        chrome.runtime.openOptionsPage();
+      });
       break;
     case "single-paper":
       root.innerHTML = renderSinglePaper(state.paper, state.check);
@@ -200,8 +204,11 @@ function renderNotSignedIn(): string {
       <h1>Save to inCite</h1>
     </div>
     <div class="empty-message">
-      <p>Sign in to save papers to your library.</p>
-      <p><a href="${url}/settings" target="_blank">Set up your API token</a> in the extension settings.</p>
+      <p>Connect to your inCite account to get started.</p>
+      <ol class="setup-steps">
+        <li>Copy your API key from <a href="${url}/web/settings" target="_blank">inciteref.com/web/settings</a></li>
+        <li>Paste it in <a href="#" id="open-options">extension options</a> (or right-click the extension icon → Options)</li>
+      </ol>
     </div>
   `;
 }

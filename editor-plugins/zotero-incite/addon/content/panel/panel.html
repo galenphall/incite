@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>inCite Control Center</title>
+  <style>:root {
+  /* --- InCite Identity --- */
+  --ink:        #1a1a1e;
+  --ink-soft:   #2a2a2f;
+  --ink-muted:  #4a4a52;
+  --graphite:   #6b6b74;
+  --slate:      #8e8e97;
+  --silver:     #b8b8bf;
+  --fog:        #dcdce0;
+  --paper:      #f0efe9;
+  --paper-warm: #f5f4ed;
+  --cream:      #faf9f3;
+
+  --oxblood:       #8b2e2e;
+  --oxblood-light: #a83c3c;
+  --oxblood-faint: #f2e8e8;
+  --oxblood-muted: #c47070;
+
+  --success: #3a6b4a;
+  --warning: #8b6b2e;
+  --error:   #8b2e2e;
+
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'SF Mono', 'Menlo', 'Consolas', monospace;
+
+  /* --- Semantic tokens --- */
+  --bg: var(--cream);
+  --fg: var(--ink);
+  --fg-muted: var(--graphite);
+  --border: var(--fog);
+  --card-bg: #ffffff;
+  --accent: var(--ink);
+  --accent-hover: var(--ink-soft);
+  --badge-bg: var(--paper);
+  --badge-fg: var(--ink-muted);
+  --radius: 6px;
+  --radius-sm: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--ink);
+    --fg: var(--cream);
+    --fg-muted: var(--slate);
+    --border: #3a3a40;
+    --card-bg: var(--ink-soft);
+    --accent: var(--cream);
+    --accent-hover: var(--silver);
+    --badge-bg: #3a3a40;
+    --badge-fg: var(--silver);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+/* --- Header --- */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.logo-text {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+}
+
+.header-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.status-dot.connected { background: var(--success); }
+.status-dot.error { background: var(--error); }
+
+.status-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.settings-link {
+  color: var(--fg-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+.settings-link:hover { color: var(--fg); text-decoration: underline; }
+
+/* --- Settings panel --- */
+.settings-panel {
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px 12px;
+}
+
+.settings-header {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.settings-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+
+.settings-input {
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-settings-save {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* --- Buttons --- */
+.btn-primary {
+  padding: 6px 14px;
+  background: var(--accent);
+  color: var(--cream);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease;
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (prefers-color-scheme: dark) {
+  .btn-primary { color: var(--ink); }
+}
+
+.btn-sync {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn-action {
+  flex: 1;
+}
+
+.btn-secondary-action {
+  background: var(--badge-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary-action:hover {
+  background: var(--border);
+}
+
+/* --- Mode views --- */
+.mode-view {
+  padding: 12px;
+}
+
+/* --- Status card --- */
+.status-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.status-card-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--badge-bg);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-row:last-child {
+  border-bottom: none;
+}
+
+.status-key {
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.status-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* --- Progress bar --- */
+.progress-section {
+  margin-top: 12px;
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-weight: 500;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--badge-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+/* --- Info card (disconnected state) --- */
+.info-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 20px;
+  text-align: center;
+}
+
+.info-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--badge-bg);
+  color: var(--fg-muted);
+  font-weight: 700;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.info-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.info-card-body {
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.info-card-body p {
+  margin-bottom: 8px;
+}
+
+.command-hint {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--badge-bg);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin: 8px auto;
+  max-width: fit-content;
+  color: var(--fg);
+}
+
+.info-card-note {
+  font-size: 11px;
+  color: var(--slate);
+  margin-top: 4px;
+}
+
+/* --- Error card --- */
+.error-card {
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--oxblood-faint);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error-card {
+    background: rgba(139, 46, 46, 0.15);
+  }
+}
+
+.error-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--error);
+  margin-bottom: 4px;
+}
+
+.error-card-body {
+  font-size: 12px;
+  color: var(--fg-muted);
+  word-break: break-word;
+}
+
+/* --- Toast --- */
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: var(--ink);
+  color: var(--cream);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 12px;
+  z-index: 100;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } }
+
+/* --- Spinner --- */
+.loading {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--fg-muted);
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 8px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Setup card --- */
+.setup-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.setup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-row:last-child { border-bottom: none; }
+
+.setup-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.setup-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setup-check { color: var(--success); font-weight: 600; }
+.setup-x { color: var(--error); font-weight: 600; }
+
+.setup-actions {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+
+.setup-actions:last-child { border-bottom: none; }
+
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+
+.btn-danger { background: var(--error); }
+.btn-danger:hover { background: var(--oxblood-light); }
+
+.setup-progress {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-progress-text {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+}
+
+.setup-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+</style>
+</head>
+<body>
+  <header id="header">
+    <div class="header-left">
+      <span class="logo-text">inCite</span>
+      <span class="header-subtitle">Control Center</span>
+    </div>
+    <div class="header-right">
+      <span id="status-dot" class="status-dot" title="Checking connection..."></span>
+      <span id="status-label" class="status-label">Checking...</span>
+      <button id="btn-settings-toggle" class="settings-link">Settings</button>
+    </div>
+  </header>
+
+  <div id="settings-panel" class="settings-panel" style="display:none;">
+    <div class="settings-header">
+      <h3>Settings</h3>
+    </div>
+    <div class="settings-body">
+      <label class="settings-label">
+        API Mode
+        <select id="setting-apiMode" class="settings-input">
+          <option value="local">Local</option>
+          <option value="cloud">Cloud</option>
+        </select>
+      </label>
+      <label class="settings-label" id="label-localUrl">
+        Local Server URL
+        <input type="text" id="setting-localUrl" class="settings-input" placeholder="http://127.0.0.1:8230">
+      </label>
+      <label class="settings-label" id="label-cloudUrl" style="display:none;">
+        Cloud Server URL
+        <input type="text" id="setting-cloudUrl" class="settings-input" placeholder="https://inciteref.com">
+      </label>
+      <label class="settings-label" id="label-apiToken" style="display:none;">
+        API Token
+        <input type="password" id="setting-apiToken" class="settings-input" placeholder="Your API token">
+      </label>
+      <button id="btn-settings-save" class="btn-primary btn-settings-save">Save Settings</button>
+    </div>
+  </div>
+
+  <!-- Local mode view -->
+  <div id="local-view" class="mode-view">
+    <div id="local-connected" style="display:none;">
+      <div class="status-card">
+        <div class="status-card-header">Server Status</div>
+        <div class="status-row"><span class="status-key">Corpus</span><span id="local-corpus" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Embedder</span><span id="local-embedder" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Method</span><span id="local-method" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Mode</span><span id="local-mode" class="status-value">—</span></div>
+      </div>
+    </div>
+    <div id="local-disconnected">
+      <div class="setup-card">
+        <div class="status-card-header">Setup</div>
+        <div class="setup-row">
+          <span class="setup-label">Python</span>
+          <span id="setup-python-status" class="setup-status"><span class="setup-spinner"></span> Checking...</span>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">inCite</span>
+          <span id="setup-incite-status" class="setup-status"><span class="setup-spinner"></span> Checking...</span>
+        </div>
+        <div id="setup-install-row" class="setup-actions" style="display:none;">
+          <button id="btn-install-incite" class="btn-primary btn-sm">Install inCite</button>
+        </div>
+        <div id="setup-install-progress" class="setup-progress" style="display:none;">
+          <span id="install-progress-text" class="setup-progress-text">Installing...</span>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">Server</span>
+          <span id="setup-server-status" class="setup-status">Stopped</span>
+        </div>
+        <div id="setup-server-actions" class="setup-actions">
+          <button id="btn-start-server" class="btn-primary btn-sm" disabled>Start Server</button>
+          <button id="btn-stop-server" class="btn-primary btn-sm btn-danger" style="display:none;">Stop Server</button>
+        </div>
+        <div class="setup-row">
+          <span class="setup-label">Library</span>
+          <span id="setup-process-status" class="setup-status">Not processed</span>
+        </div>
+        <div id="setup-process-actions" class="setup-actions">
+          <button id="btn-process-library" class="btn-primary btn-sm" disabled>Process Library</button>
+        </div>
+        <div id="setup-process-progress" class="setup-progress" style="display:none;">
+          <span id="process-progress-text" class="setup-progress-text">Processing...</span>
+        </div>
+      </div>
+      <div id="setup-python-missing" class="info-card" style="display:none; margin-top:12px;">
+        <div class="info-card-body">
+          <p>Python 3 is required. Download it from <a href="#" onclick="window.open('https://www.python.org/downloads/'); return false;">python.org</a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud mode view -->
+  <div id="cloud-view" class="mode-view" style="display:none;">
+    <div id="cloud-connected" style="display:none;">
+      <div class="status-card">
+        <div class="status-card-header">Library Status</div>
+        <div class="status-row"><span class="status-key">Status</span><span id="cloud-status" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Papers</span><span id="cloud-papers" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Chunks</span><span id="cloud-chunks" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Full-text papers</span><span id="cloud-fulltext-papers" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Full-text chunks</span><span id="cloud-fulltext-chunks" class="status-value">—</span></div>
+        <div class="status-row"><span class="status-key">Abstract-only</span><span id="cloud-abstract-only" class="status-value">—</span></div>
+      </div>
+      <div id="cloud-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="progress-stage">Processing</span> <span id="progress-count"></span></div>
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+      </div>
+      <div class="btn-row">
+        <button id="btn-upload" class="btn-primary btn-action">Upload Library</button>
+        <button id="btn-sync" class="btn-primary btn-action btn-secondary-action">Sync Library</button>
+      </div>
+      <div id="upload-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="upload-stage">Uploading</span> <span id="upload-count"></span></div>
+        <div class="progress-bar"><div id="upload-fill" class="progress-fill"></div></div>
+      </div>
+      <div id="sync-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="sync-stage">Syncing</span> <span id="sync-count"></span></div>
+      </div>
+    </div>
+    <div id="cloud-disconnected" class="info-card">
+      <div class="info-card-icon">!</div>
+      <div class="info-card-title">Not Connected</div>
+      <div class="info-card-body">
+        <p>Enter your API token in Settings to connect to inCite Cloud.</p>
+      </div>
+    </div>
+    <div id="cloud-error" class="error-card" style="display:none;">
+      <div class="error-card-title">Error</div>
+      <div id="cloud-error-message" class="error-card-body"></div>
+    </div>
+  </div>
+
+  <script>(()=>{var h=class{async get(t,e){let s=await fetch(t,{method:"GET",headers:{Accept:"application/json",...e}});if(!s.ok)throw new Error(`HTTP ${s.status}: ${s.statusText}`);return s.json()}async post(t,e,s){let o=await fetch(t,{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json",...s},body:JSON.stringify(e)});if(!o.ok)throw new Error(`HTTP ${o.status}: ${o.statusText}`);return o.json()}},v=class{constructor(t,e){typeof t=="string"?this.config={apiMode:"local",cloudUrl:"https://inciteref.com",localUrl:t,apiToken:""}:this.config={...t},this.transport=e??new h}updateConfig(t){Object.assign(this.config,t)}setBaseUrl(t){this.config.localUrl=t}getBaseUrl(){return this.config.apiMode==="cloud"?this.config.cloudUrl:this.config.localUrl}getAuthHeaders(){return this.config.apiMode==="cloud"&&this.config.apiToken?{Authorization:`Bearer ${this.config.apiToken}`}:{}}getEndpoint(t){if(this.config.apiMode==="cloud")switch(t){case"/health":return"/api/v1/health";case"/recommend":return"/api/v1/recommend";default:return t}return t}async authGet(t){let e=`${this.getBaseUrl()}${this.getEndpoint(t)}`;return this.transport.get(e,this.getAuthHeaders())}async authPost(t,e){let s=`${this.getBaseUrl()}${this.getEndpoint(t)}`;return this.transport.post(s,e,this.getAuthHeaders())}async health(){let e=await this.authGet("/health");return this.config.apiMode==="cloud"&&e.ready===void 0?{...e,ready:e.status==="ready"}:e}async recommend(t,e,s,o,l){let r={query:t,k:e,author_boost:s};return o!==void 0&&(r.cursor_sentence_index=o),l&&(r.collection_id=l),await this.authPost("/recommend",r)}async savePapers(t){return await this.authPost("/api/v1/library/papers",t)}async checkLibrary(t){return(await this.authPost("/api/v1/library/check",{papers:t})).results}async getCollections(){return(await this.authGet("/api/v1/library/collections")).collections}async searchTags(t){let e=encodeURIComponent(t);return(await this.authGet(`/api/v1/library/tags/search?q=${e}`)).tags}async serverConfig(){let t=`${this.config.localUrl}/config`;return this.transport.get(t)}async libraryStatus(){return this.authGet("/api/v1/upload-library/status")}async libraryRefresh(){return this.authPost("/api/library/refresh",{})}};var d="http://localhost:23119",R={apiMode:"local",localUrl:"http://127.0.0.1:8230",cloudUrl:"https://inciteref.com",apiToken:""},a={...R},C=null,b=0;async function j(){try{let n=await fetch(d+"/incite/settings");if(n.ok){let t=await n.json();a={...R,...t}}}catch{}}async function O(){try{let n=await fetch(d+"/incite/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(a)});n.ok?c("Settings saved"):c("Failed to save settings (HTTP "+n.status+")")}catch{c("Failed to save settings")}}function F(){let n={apiMode:a.apiMode,localUrl:a.localUrl,cloudUrl:a.cloudUrl,apiToken:a.apiToken};return new v(n,new h)}var B=document.getElementById("status-dot"),N=document.getElementById("status-label"),I=document.getElementById("settings-panel"),D=document.getElementById("btn-settings-toggle"),q=document.getElementById("btn-settings-save"),G=document.getElementById("local-view"),$=document.getElementById("local-connected"),L=document.getElementById("local-disconnected"),J=document.getElementById("cloud-view"),E=document.getElementById("cloud-connected"),k=document.getElementById("cloud-disconnected"),T=document.getElementById("cloud-error"),M=document.getElementById("cloud-error-message"),p=document.getElementById("btn-sync"),g=document.getElementById("btn-upload"),S=document.getElementById("btn-install-incite"),u=document.getElementById("btn-start-server"),y=document.getElementById("btn-stop-server"),m=document.getElementById("btn-process-library");D.addEventListener("click",()=>{let n=I.style.display!=="none";I.style.display=n?"none":"block",n||H()});q.addEventListener("click",async()=>{et(),await O(),I.style.display="none",P(),f()});document.getElementById("setting-apiMode")?.addEventListener("change",()=>{U()});S?.addEventListener("click",()=>z());u?.addEventListener("click",()=>K());y?.addEventListener("click",()=>X());m?.addEventListener("click",()=>W());g?.addEventListener("click",()=>V());p.addEventListener("click",()=>Z());async function _(){let n=document.getElementById("setup-python-status"),t=document.getElementById("setup-incite-status"),e=document.getElementById("setup-install-row"),s=document.getElementById("setup-python-missing");n.innerHTML='<span class="setup-spinner"></span> Checking...';try{let l=await(await fetch(d+"/incite/system/python")).json();if(l.found){n.innerHTML=`<span class="setup-check">\u2713</span> ${l.version}`,s.style.display="none",t.innerHTML='<span class="setup-spinner"></span> Checking...';let i=await(await fetch(d+"/incite/system/incite")).json();i.installed?(t.innerHTML=`<span class="setup-check">\u2713</span> ${i.version}`,e.style.display="none",u.disabled=!1,m.disabled=!1):(t.innerHTML='<span class="setup-x">\u2717</span> Not installed',e.style.display="flex",u.disabled=!0,m.disabled=!0)}else n.innerHTML='<span class="setup-x">\u2717</span> Not found',t.innerHTML='<span class="setup-x">\u2717</span> \u2014',s.style.display="block",e.style.display="none",u.disabled=!0,m.disabled=!0}catch{n.innerHTML='<span class="setup-x">\u2717</span> Error',t.innerHTML='<span class="setup-x">\u2717</span> \u2014'}}async function z(){let n=document.getElementById("setup-install-row"),t=document.getElementById("setup-install-progress"),e=document.getElementById("install-progress-text");S.disabled=!0,n.style.display="none",t.style.display="block",e.textContent="Setting up local server...";try{await fetch(d+"/incite/system/install",{method:"POST"});let s=0,o=async()=>{s++;try{let r=await(await fetch(d+"/incite/system/install/status")).json();if(r.status==="running"||r.status==="idle")e.textContent=r.status==="idle"?"Starting install...":"Installing... (this may take a few minutes)",setTimeout(o,3e3);else if(r.status==="done")t.style.display="none",c("inCite installed successfully"),_();else if(r.status==="error"){let i=r.output??"";e.textContent="Install failed: "+(i.length>500?"..."+i.slice(-500):i),S.disabled=!1,n.style.display="flex"}}catch{s<60?setTimeout(o,3e3):(e.textContent="Install status unknown \u2014 check Zotero console",S.disabled=!1,n.style.display="flex")}};setTimeout(o,3e3)}catch{e.textContent="Install failed",S.disabled=!1,n.style.display="flex"}}async function K(){u.disabled=!0,u.textContent="Starting...";let n=document.getElementById("setup-server-status");n.textContent="Starting...";try{await fetch(d+"/incite/system/server/start",{method:"POST"}),c("Server starting..."),setTimeout(()=>f(5e3),3e3)}catch{c("Failed to start server"),u.disabled=!1,u.textContent="Start Server",n.textContent="Stopped"}}async function X(){y.disabled=!0;try{await fetch(d+"/incite/system/server/stop",{method:"POST"}),c("Server stopped"),f()}catch{c("Failed to stop server")}y.disabled=!1}async function W(){let n=document.getElementById("setup-process-progress"),t=document.getElementById("process-progress-text"),e=document.getElementById("setup-process-status");m.disabled=!0,n.style.display="block",t.textContent="Starting library processing...",e.textContent="Processing...";try{await fetch(d+"/incite/system/process",{method:"POST"});let s=0,o=async()=>{s++;try{let r=await(await fetch(d+"/incite/system/process/status")).json();if(r.status==="running"||r.status==="idle")t.textContent=r.output||"Processing...",setTimeout(o,3e3);else if(r.status==="done")n.style.display="none",e.textContent="Ready",c("Library processed successfully"),f(5e3);else if(r.status==="error"){let i=r.output??"";t.textContent="Failed: "+(i.length>300?"..."+i.slice(-300):i),e.textContent="Error",m.disabled=!1}}catch{s<60?setTimeout(o,3e3):(t.textContent="Status unknown \u2014 check Zotero console",m.disabled=!1)}};setTimeout(o,3e3)}catch{t.textContent="Failed to start processing",e.textContent="Error",m.disabled=!1}}async function V(){let n=document.getElementById("upload-progress"),t=document.getElementById("upload-stage"),e=document.getElementById("upload-count"),s=document.getElementById("upload-fill");g.disabled=!0,g.textContent="Uploading...",n.style.display="block",t.textContent="Starting upload...",e.textContent="",s.style.width="0%";try{await fetch(d+"/incite/cloud/upload",{method:"POST"});let o=0,l=async()=>{o++;try{let i=await(await fetch(d+"/incite/cloud/upload/status")).json();if(i.status==="done"){n.style.display="none",c("Library uploaded successfully"),g.disabled=!1,g.textContent="Upload Library",f(1e4);return}if(i.status==="error"){t.textContent="Upload failed",e.textContent="",s.style.width="0%",c("Upload failed: "+i.message),g.disabled=!1,g.textContent="Upload Library";return}if(t.textContent=i.message||w(i.status),i.current!=null&&i.total!=null&&i.total>0){let A=Math.round(i.current/i.total*100);e.textContent=`${i.current}/${i.total}`,s.style.width=`${A}%`}else e.textContent="",s.style.width="0%";setTimeout(l,2e3)}catch{o<120?setTimeout(l,3e3):(t.textContent="Upload status unknown",g.disabled=!1,g.textContent="Upload Library")}};setTimeout(l,2e3)}catch{c("Failed to start upload"),g.disabled=!1,g.textContent="Upload Library",n.style.display="none"}}async function Z(){let n=document.getElementById("sync-progress"),t=document.getElementById("sync-stage"),e=document.getElementById("sync-count");p.disabled=!0,p.textContent="Syncing...",n.style.display="block",t.textContent="Starting sync...",e.textContent="";try{let s=await fetch(d+"/incite/cloud/sync",{method:"POST"});if(!s.ok)throw new Error(`HTTP ${s.status}: ${await s.text()}`);let o=0,l=async()=>{o++;try{let i=await(await fetch(d+"/incite/cloud/sync/status")).json();if(i.status==="done"){n.style.display="none",c(i.message||"Sync complete"),p.disabled=!1,p.textContent="Sync Library",f(1e4);return}if(i.status==="error"){t.textContent="Sync failed",e.textContent="",c("Sync failed: "+i.message),p.disabled=!1,p.textContent="Sync Library";return}t.textContent=i.message||w(i.status),(i.created!=null||i.skipped!=null)&&(e.textContent=`${i.created??0} new, ${i.skipped??0} existing`),setTimeout(l,2e3)}catch{o<120?setTimeout(l,3e3):(t.textContent="Sync status unknown",p.disabled=!1,p.textContent="Sync Library")}};setTimeout(l,2e3)}catch(s){c("Failed to start sync: "+(s instanceof Error?s.message:String(s))),p.disabled=!1,p.textContent="Sync Library",n.style.display="none"}}j().then(()=>{H(),P(),f(),a.apiMode==="local"&&_()});function P(){let n=a.apiMode==="cloud";G.style.display=n?"none":"block",J.style.display=n?"block":"none"}function f(n){C&&(clearTimeout(C),C=null);let t=++b,e=()=>{t===b&&(a.apiMode==="cloud"?Q(t).then(s=>{t===b&&(C=setTimeout(e,s??n??6e4))}):Y().then(()=>{t===b&&(C=setTimeout(e,n??3e4))}))};e()}async function Y(){try{let n=F(),t=await n.health();x("connected",`Connected \u2014 ${t.corpus_size??"?"} papers`),$.style.display="block",L.style.display="none";let e=document.getElementById("setup-server-status");e&&(e.textContent="Running"),u&&(u.style.display="none"),y&&(y.style.display="inline-block");let s=document.getElementById("setup-process-status");s&&(s.textContent=`Ready (${t.corpus_size??0} papers)`),document.getElementById("local-corpus").textContent=String(t.corpus_size??"\u2014");try{let o=await n.serverConfig();document.getElementById("local-embedder").textContent=o.embedder,document.getElementById("local-method").textContent=o.method,document.getElementById("local-mode").textContent=o.mode}catch{document.getElementById("local-embedder").textContent="\u2014",document.getElementById("local-method").textContent="\u2014",document.getElementById("local-mode").textContent="\u2014"}}catch{x("error","Not connected"),$.style.display="none",L.style.display="block";let n=document.getElementById("setup-server-status");n&&(n.textContent="Stopped"),u&&(u.style.display="inline-block",u.textContent="Start Server"),y&&(y.style.display="none"),_()}}async function Q(n){try{let t=await fetch(d+"/incite/cloud/status");if(!t.ok)throw new Error(`HTTP ${t.status}: ${await t.text()}`);if(n!=null&&n!==b)return 6e4;let e=await t.json();if(e.library_status==="no_token")return x("error","Not connected"),E.style.display="none",k.style.display="block",T.style.display="none",6e4;x("connected",tt(e.library_status)),E.style.display="block",k.style.display="none",T.style.display="none",document.getElementById("cloud-status").textContent=e.library_status,document.getElementById("cloud-papers").textContent=String(e.num_papers),document.getElementById("cloud-chunks").textContent=String(e.num_chunks),document.getElementById("cloud-fulltext-papers").textContent=String(e.grobid_fulltext_papers),document.getElementById("cloud-fulltext-chunks").textContent=String(e.grobid_fulltext_chunks),document.getElementById("cloud-abstract-only").textContent=String(e.abstract_only_papers);let s=document.getElementById("cloud-progress");if(e.job_status&&e.job_status!=="idle"){if(s.style.display="block",document.getElementById("progress-stage").textContent=w(e.stage??"Processing"),e.current!=null&&e.total!=null&&e.total>0){let o=Math.round(e.current/e.total*100);document.getElementById("progress-count").textContent=`${e.current}/${e.total}`,document.getElementById("progress-fill").style.width=`${o}%`}else document.getElementById("progress-count").textContent="",document.getElementById("progress-fill").style.width="0%";return 1e4}else s.style.display="none";return e.error&&(T.style.display="block",M.textContent=e.error),6e4}catch(t){if(n!=null&&n!==b)return 6e4;let e=t instanceof Error?t.message:String(t);return console.error("inCite cloud status error:",e),a.apiToken?(x("error","Connection error"),E.style.display="none",k.style.display="none",T.style.display="block",M.textContent=e):(x("error","Not connected"),E.style.display="none",k.style.display="block",T.style.display="none"),6e4}}function x(n,t){B.className=`status-dot ${n}`,B.title=t,N.textContent=t}function tt(n){switch(n){case"ready":return"Library ready";case"processing":return"Processing...";case"no_library":return"No library";default:return n}}function w(n){return n.charAt(0).toUpperCase()+n.slice(1)}function H(){document.getElementById("setting-apiMode").value=a.apiMode,document.getElementById("setting-localUrl").value=a.localUrl,document.getElementById("setting-cloudUrl").value=a.cloudUrl,document.getElementById("setting-apiToken").value=a.apiToken,U()}function et(){a.apiMode=document.getElementById("setting-apiMode").value,a.localUrl=document.getElementById("setting-localUrl").value,a.cloudUrl=document.getElementById("setting-cloudUrl").value,a.apiToken=document.getElementById("setting-apiToken").value}function U(){let t=document.getElementById("setting-apiMode").value==="cloud";document.getElementById("label-localUrl").style.display=t?"none":"flex",document.getElementById("label-cloudUrl").style.display=t?"flex":"none",document.getElementById("label-apiToken").style.display=t?"flex":"none"}function c(n){let t=document.querySelector(".toast");t&&t.remove();let e=document.createElement("div");e.className="toast",e.textContent=n,document.body.appendChild(e),setTimeout(()=>e.remove(),2500)}})();
+</script>
+</body>
+</html>

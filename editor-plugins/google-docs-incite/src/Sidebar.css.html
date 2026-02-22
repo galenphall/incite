@@ -31,10 +31,10 @@
     --fg-muted: var(--graphite);
     --border: var(--fog);
     --card-bg: #ffffff;
-    --accent: var(--oxblood);
-    --accent-hover: var(--oxblood-light);
-    --evidence-bg: var(--oxblood-faint);
-    --evidence-border: var(--oxblood-muted);
+    --accent: var(--ink);
+    --accent-hover: var(--ink-soft);
+    --evidence-bg: var(--paper);
+    --evidence-border: var(--silver);
     --badge-bg: var(--paper);
     --badge-fg: var(--ink-muted);
     --radius: 6px;
@@ -103,6 +103,27 @@
   }
   .mc-settings-link:hover { color: var(--fg); }
 
+  /* ── Collection filter ─────────────────────────────────────── */
+  .mc-collection-filter {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mc-collection-select {
+    width: 100%;
+    padding: 5px 8px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .mc-collection-select:focus {
+    outline: none;
+    border-color: var(--oxblood);
+  }
+
   /* ── Action bar ────────────────────────────────────────────── */
   .mc-action-bar {
     padding: 10px 12px;
@@ -114,9 +135,9 @@
 
   .mc-btn {
     padding: 6px 14px;
-    background: var(--accent);
-    color: var(--cream);
-    border: none;
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-family: var(--font-body);
     font-size: 12px;
@@ -124,9 +145,9 @@
     cursor: pointer;
     white-space: nowrap;
     letter-spacing: 0.01em;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
   }
-  .mc-btn:hover { background: var(--accent-hover); }
+  .mc-btn:hover { background: var(--paper); border-color: var(--silver); }
   .mc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── Status bar (text detail) ──────────────────────────────── */
@@ -225,12 +246,13 @@
   }
 
   .mc-confidence {
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-size: 10px;
     font-weight: 500;
     padding: 1px 6px;
     border-radius: var(--radius-sm);
     letter-spacing: 0.02em;
+    cursor: default;
   }
   .mc-confidence-high {
     background: #e8f0ed;
@@ -264,19 +286,40 @@
     margin-bottom: 4px;
   }
 
+  /* Evidence toggle */
+  .mc-evidence-toggle {
+    font-family: var(--font-body);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 0;
+    margin-top: 4px;
+    transition: color 0.15s ease;
+  }
+  .mc-evidence-toggle:hover { color: var(--fg); }
+
   /* Matched paragraph evidence */
+  .mc-evidence-content {
+    display: none;
+  }
+  .mc-evidence-content.expanded {
+    display: block;
+  }
   .mc-paragraph {
     font-size: 11px;
     color: var(--fg);
     border-left: 3px solid var(--evidence-border);
     background: var(--evidence-bg);
     padding: 6px 8px;
-    margin: 6px 0;
+    margin: 4px 0;
     line-height: 1.4;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .mc-paragraph strong {
-    color: var(--accent);
+    color: var(--fg);
     font-weight: 600;
   }
   .mc-paragraph-secondary {
@@ -288,8 +331,23 @@
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 500;
-    color: var(--oxblood);
+    color: var(--ink-muted);
     margin-right: 4px;
+  }
+
+  /* Query context bar */
+  .mc-query-context {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mc-query-context strong {
+    font-weight: 500;
+    color: var(--fg);
   }
 
   /* Actions row */
@@ -322,5 +380,136 @@
     text-align: right;
     border-top: 1px solid var(--border);
     letter-spacing: 0.02em;
+  }
+
+  /* ── Bibliography ────────────────────────────────────────────── */
+  .mc-bib-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin: 10px 12px 0;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    user-select: none;
+  }
+  .mc-bib-header:hover { background: var(--paper-warm); }
+
+  .mc-bib-header-label {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .mc-bib-toggle {
+    font-size: 10px;
+    color: var(--fg-muted);
+    transition: transform 0.2s ease;
+  }
+  .mc-bib-toggle.expanded { transform: rotate(90deg); }
+
+  .mc-bib-body {
+    margin: 0 12px;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    background: var(--card-bg);
+  }
+
+  .mc-bib-export {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .mc-copy-btn {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card-bg);
+    color: var(--fg);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .mc-copy-btn:hover {
+    background: var(--paper);
+    border-color: var(--silver);
+  }
+
+  .mc-bib-entry {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .mc-bib-entry:last-child { border-bottom: none; }
+
+  .mc-bib-entry-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mc-bib-entry-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    color: var(--fg);
+  }
+
+  .mc-bib-entry-meta {
+    font-size: 10px;
+    color: var(--fg-muted);
+    margin-top: 1px;
+  }
+
+  .mc-remove-btn {
+    font-family: var(--font-body);
+    font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card-bg);
+    color: var(--fg-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .mc-remove-btn:hover {
+    background: var(--oxblood-faint);
+    color: var(--error);
+    border-color: var(--oxblood-muted);
+  }
+
+  .mc-bib-empty {
+    padding: 12px 10px;
+    text-align: center;
+    color: var(--fg-muted);
+    font-size: 11px;
+  }
+
+  /* Cited badge on result cards */
+  .mc-cited-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+    background: #e8f0ed;
+    color: #3a6b4a;
+    margin-left: 6px;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
   }
 </style>

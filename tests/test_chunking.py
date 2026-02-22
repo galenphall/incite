@@ -3,15 +3,15 @@
 import pytest
 
 from incite.corpus.chunking import (
+    _is_bibliography_chunk,
+    _is_corrupted_text,
+    _is_reference_section,
+    _looks_like_bibliography_entry,
+    _looks_like_heading,
+    _split_into_paragraphs,
+    _split_long_text,
     chunk_paper,
     chunk_papers,
-    _split_into_paragraphs,
-    _looks_like_heading,
-    _split_long_text,
-    _is_reference_section,
-    _is_corrupted_text,
-    _looks_like_bibliography_entry,
-    _is_bibliography_chunk,
 )
 from incite.models import Chunk, Paper
 
@@ -218,7 +218,9 @@ class TestHelperFunctions:
     def test_looks_like_heading_negative(self):
         """Test that regular text is not detected as heading."""
         assert not _looks_like_heading("This is a regular sentence.")
-        assert not _looks_like_heading("A very long text that is definitely not a heading because it has way too many words.")
+        assert not _looks_like_heading(
+            "A very long text that is definitely not a heading because it has way too many words."
+        )
 
     def test_split_long_text(self):
         """Test splitting long text at sentence boundaries."""
@@ -442,3 +444,137 @@ class TestChunkFiltering:
         chunks = chunk_paper(paper, min_chunk_length=30)
         assert len(chunks) == 2
         assert all("??????" not in c.text for c in chunks)
+
+
+class TestSourcePropagation:
+    """Tests for source field propagation through chunk_paper."""
+
+    def test_source_set_on_chunks(self):
+        paper = Paper(
+            id="test",
+            title="Test",
+            abstract="Abstract with enough text to be a valid chunk for testing purposes.",
+        )
+        chunks = chunk_paper(paper, min_chunk_length=20, source="html")
+        assert len(chunks) == 1
+        assert chunks[0].source == "html"
+
+    def test_source_none_by_default(self):
+        paper = Paper(
+            id="test",
+            title="Test",
+            abstract="Abstract with enough text to be a valid chunk for testing purposes.",
+        )
+        chunks = chunk_paper(paper, min_chunk_length=20)
+        assert len(chunks) == 1
+        assert chunks[0].source is None
+
+    def test_source_propagates_to_split_chunks(self):
+        """Source should be set on sub-chunks from long paragraphs."""
+        # Use realistic prose that won't be filtered as corrupted/table data
+        long_para = (
+            "The effects of climate change on global biodiversity are well documented. " * 40
+        )
+        paper = Paper(
+            id="test",
+            title="Test",
+            abstract="Abstract.",
+            full_text=long_para,
+        )
+        chunks = chunk_paper(paper, max_tokens=100, min_chunk_length=20, source="grobid")
+        assert len(chunks) >= 2
+        assert all(c.source == "grobid" for c in chunks)
+
+
+class TestPreStructuredInput:
+    """Tests for pre_structured parameter in chunk_paper."""
+
+    def test_pre_structured_uses_provided_paragraphs(self):
+        paper = Paper(id="test", title="Test", abstract="Abstract.")
+        pre_structured = (
+            [
+                "First paragraph from HTML that is long enough to be a chunk.",
+                "Second paragraph from HTML that is also long enough to be kept.",
+            ],
+            ["Introduction", "Methods"],
+        )
+        chunks = chunk_paper(
+            paper, min_chunk_length=20, source="html", pre_structured=pre_structured
+        )
+        assert len(chunks) == 2
+        assert chunks[0].section == "Introduction"
+        assert chunks[1].section == "Methods"
+        assert chunks[0].source == "html"
+
+    def test_pre_structured_skips_heading_detection(self):
+        """Headings in pre_structured text should not be detected as headings."""
+        paper = Paper(id="test", title="Test", abstract="Abstract.")
+        # "Introduction" by itself would be detected as a heading normally
+        pre_structured = (
+            [
+                "Introduction paragraph that is long enough to be a chunk for testing.",
+            ],
+            [None],
+        )
+        chunks = chunk_paper(paper, min_chunk_length=20, pre_structured=pre_structured)
+        assert len(chunks) == 1
+        assert "Introduction" in chunks[0].text
+
+    def test_pre_structured_empty_returns_empty(self):
+        paper = Paper(id="test", title="Test", abstract="Abstract.")
+        pre_structured = ([], [])
+        chunks = chunk_paper(paper, pre_structured=pre_structured)
+        assert chunks == []
+
+    def test_pre_structured_filters_still_apply(self):
+        """Boilerplate and bibliography filters still run on pre_structured input."""
+        paper = Paper(id="test", title="Test", abstract="Abstract.")
+        pre_structured = (
+            [
+                "Normal paragraph with enough text to meet the minimum length requirement.",
+                "This content downloaded from JSTOR on 2024-01-01 and is subject to terms.",
+            ],
+            [None, None],
+        )
+        chunks = chunk_paper(paper, min_chunk_length=20, pre_structured=pre_structured)
+        assert len(chunks) == 1
+        assert "Normal paragraph" in chunks[0].text
+
+
+class TestHtmlBoilerplatePatterns:
+    """Tests for HTML-specific boilerplate patterns in _is_boilerplate."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Sign in to access this content and other features on this site.",
+            "Log in or create an account to view the full article.",
+            "Share this article on Twitter, Facebook, or email.",
+            "Accept all cookies to continue browsing this website.",
+            "We use cookies to improve your experience on our site.",
+            "View all references for this article on the publisher's site.",
+            "Cited by 42 articles in various journals and databases.",
+            "Subscribe to our newsletter for the latest research updates.",
+            "Access the full text of this article through your institution.",
+            "Author contributions: J.S. designed the study and wrote the paper.",
+            "Data availability: All data are available in the supplementary materials.",
+        ],
+    )
+    def test_html_boilerplate_detected(self, text):
+        from incite.corpus.chunking import _is_boilerplate
+
+        assert _is_boilerplate(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Climate change impacts on sea level rise have been studied extensively in recent decades.",
+            "The proposed algorithm achieves state-of-the-art performance on multiple benchmarks.",
+            "We collected data from 500 participants across three different experimental conditions.",
+            "The authors would like to thank the reviewers for their helpful comments on the manuscript.",
+        ],
+    )
+    def test_normal_text_not_flagged(self, text):
+        from incite.corpus.chunking import _is_boilerplate
+
+        assert not _is_boilerplate(text)

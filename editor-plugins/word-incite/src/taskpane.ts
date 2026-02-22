@@ -15,8 +15,9 @@ import {
 	stripCitations,
 	CitationTracker,
 	escapeHtml,
+	exportFormattedText,
 } from "@incite/shared";
-import type { ApiMode, Recommendation } from "@incite/shared";
+import type { ApiMode, Recommendation, Collection } from "@incite/shared";
 
 import { settings, loadSettings, saveSettings } from "./settings";
 import { createClient } from "./api";
@@ -24,6 +25,7 @@ import { getContextFromWord } from "./context";
 import { renderResults, renderSelectionBar } from "./results-renderer";
 import { renderBibliography } from "./bibliography";
 import { LocalStorageCitationStorage } from "./citation-storage";
+import { DocumentCitationStorage } from "./document-citation-storage";
 
 // --- Office.js Declarations ---
 
@@ -65,7 +67,9 @@ interface WordRange {
 
 let loading = false;
 let lastResults: Recommendation[] = [];
+let lastQueryText = "";
 const selectedRecs: Map<string, Recommendation> = new Map();
+let collections: Collection[] = [];
 
 // --- Citation Tracking ---
 
@@ -120,16 +124,28 @@ async function initApp(): Promise<void> {
 	// Load saved settings from localStorage
 	loadSettings();
 
-	// Initialize per-document citation tracker
+	// Initialize per-document citation tracker (stored in the .docx itself)
 	try {
 		const docKey = await getOrCreateDocKey();
-		tracker = new CitationTracker(new LocalStorageCitationStorage(), docKey);
+		const docStorage = new DocumentCitationStorage();
+		tracker = new CitationTracker(docStorage, docKey);
 		await tracker.load();
+
+		// Migrate: if document settings are empty, pull from localStorage
+		if (tracker.count === 0) {
+			const legacyStorage = new LocalStorageCitationStorage();
+			const legacy = await legacyStorage.load(docKey);
+			if (legacy.length > 0) {
+				await docStorage.save(docKey, legacy);
+				await tracker.load();
+			}
+		}
+
 		doRenderBibliography();
 	} catch (err) {
 		console.error("Failed to initialize document tracker:", err);
 		// Fallback to a session-level key
-		tracker = new CitationTracker(new LocalStorageCitationStorage(), "word-fallback");
+		tracker = new CitationTracker(new DocumentCitationStorage(), "word-fallback");
 		await tracker.load();
 		doRenderBibliography();
 	}
@@ -222,6 +238,13 @@ async function initApp(): Promise<void> {
 		}
 	});
 
+	// Collection filter
+	const collectionSelect = getEl("collectionSelect") as HTMLSelectElement;
+	collectionSelect.addEventListener("change", () => {
+		settings.collectionId = collectionSelect.value || null;
+		saveSettings();
+	});
+
 	// Show paragraphs toggle
 	const showParaCheckbox = getEl("showParagraphs") as HTMLInputElement;
 	showParaCheckbox.checked = settings.showParagraphs;
@@ -259,6 +282,9 @@ async function checkHealth(): Promise<void> {
 			statusEl.textContent = `Connected (${health.corpus_size} papers, ${health.mode} mode)`;
 			statusEl.className = "status connected";
 			getEl("refreshBtn").removeAttribute("disabled");
+			if (settings.apiMode === "cloud") {
+				fetchCollections();
+			}
 		} else {
 			statusEl.textContent = "Server loading...";
 			statusEl.className = "status loading";
@@ -271,6 +297,38 @@ async function checkHealth(): Promise<void> {
 		}
 		statusEl.className = "status offline";
 	}
+}
+
+async function fetchCollections(): Promise<void> {
+	try {
+		const client = createClient();
+		collections = await client.getCollections();
+		renderCollectionDropdown();
+	} catch {
+		// Collections are optional — silently ignore
+	}
+}
+
+function renderCollectionDropdown(): void {
+	const filterEl = getEl("collectionFilter");
+	const selectEl = getEl("collectionSelect") as HTMLSelectElement;
+
+	if (settings.apiMode !== "cloud" || collections.length === 0) {
+		filterEl.style.display = "none";
+		return;
+	}
+
+	selectEl.innerHTML = '<option value="">All papers</option>';
+	for (const c of collections) {
+		const opt = document.createElement("option");
+		opt.value = String(c.id);
+		opt.textContent = `${c.name} (${c.item_count})`;
+		if (settings.collectionId === String(c.id)) {
+			opt.selected = true;
+		}
+		selectEl.appendChild(opt);
+	}
+	filterEl.style.display = "";
 }
 
 // --- Recommendations ---
@@ -291,11 +349,14 @@ async function onRefresh(): Promise<void> {
 		}
 
 		const cleaned = stripCitations(ctx.text);
+		lastQueryText = cleaned;
 		const client = createClient();
 		const response = await client.recommend(
 			cleaned,
 			settings.k,
 			settings.authorBoost,
+			undefined,
+			settings.collectionId,
 		);
 
 		lastResults = response.recommendations || [];
@@ -337,6 +398,22 @@ async function insertCitation(rec: Recommendation): Promise<void> {
 	}
 }
 
+async function insertBibliography(): Promise<void> {
+	if (!tracker) return;
+	const text = exportFormattedText(tracker.getAll());
+	try {
+		await Word.run(async (context) => {
+			const selection = context.document.getSelection();
+			selection.insertText(text, Word.InsertLocation.after);
+			await context.sync();
+		});
+		showStatus("Bibliography inserted");
+		setTimeout(() => showStatus(""), 2000);
+	} catch (err) {
+		showError(`Could not insert bibliography: ${err}`);
+	}
+}
+
 async function insertMultiCitation(recs: Recommendation[]): Promise<void> {
 	if (recs.length === 0) return;
 	const citation = formatMultiCitation(recs, settings.insertFormat);
@@ -362,6 +439,11 @@ async function insertMultiCitation(recs: Recommendation[]): Promise<void> {
 /** Render recommendation results into #results. */
 function doRenderResults(results: Recommendation[]): void {
 	const container = getEl("results");
+
+	// Query context bar
+	const existingQuery = container.querySelector(".mc-query-context");
+	if (existingQuery) existingQuery.remove();
+
 	renderResults(results, container, {
 		showParagraphs: settings.showParagraphs,
 		selectedRecs,
@@ -403,6 +485,18 @@ function doRenderResults(results: Recommendation[]): void {
 			doRenderResults(lastResults);
 		},
 	});
+
+	// Insert query context bar at top of results
+	if (lastQueryText) {
+		const queryBar = document.createElement("div");
+		queryBar.className = "mc-query-context";
+		const truncated = lastQueryText.length > 80
+			? lastQueryText.slice(0, 80) + "\u2026"
+			: lastQueryText;
+		queryBar.innerHTML = `<strong>Query:</strong> ${escapeHtml(truncated)}`;
+		queryBar.title = lastQueryText;
+		container.insertBefore(queryBar, container.firstChild);
+	}
 }
 
 /** Render the bibliography section. */
@@ -413,7 +507,7 @@ function doRenderBibliography(): void {
 		await t.remove(paperId);
 		doRenderBibliography();
 		if (lastResults.length > 0) doRenderResults(lastResults);
-	});
+	}, () => insertBibliography());
 }
 
 // --- UI State Helpers ---
@@ -422,7 +516,7 @@ function setLoading(on: boolean): void {
 	loading = on;
 	const btn = getEl("refreshBtn") as HTMLButtonElement;
 	btn.disabled = on;
-	btn.textContent = on ? "Searching..." : "Get Recommendations";
+	btn.textContent = on ? "Searching\u2026" : "Get Recommendations";
 
 	if (on) {
 		const container = getEl("results");

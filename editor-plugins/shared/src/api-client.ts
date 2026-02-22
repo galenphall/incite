@@ -7,6 +7,8 @@ import type {
 	Collection,
 	Tag,
 	ClientConfig,
+	LibraryStatusResponse,
+	ServerConfigResponse,
 } from "./types";
 import { getActiveUrl } from "./types";
 
@@ -149,7 +151,8 @@ export class InCiteClient {
 		query: string,
 		k: number,
 		authorBoost: number,
-		cursorSentenceIndex?: number
+		cursorSentenceIndex?: number,
+		collectionId?: string | null
 	): Promise<RecommendResponse> {
 		const body: Record<string, unknown> = {
 			query,
@@ -158,6 +161,9 @@ export class InCiteClient {
 		};
 		if (cursorSentenceIndex !== undefined) {
 			body.cursor_sentence_index = cursorSentenceIndex;
+		}
+		if (collectionId) {
+			body.collection_id = collectionId;
 		}
 		const resp = await this.authPost("/recommend", body);
 		return resp as RecommendResponse;
@@ -186,5 +192,21 @@ export class InCiteClient {
 		const q = encodeURIComponent(query);
 		const resp = await this.authGet(`/api/v1/library/tags/search?q=${q}`) as { tags: Tag[] };
 		return resp.tags;
+	}
+
+	/** Get local server config (embedder, method, mode, etc.). */
+	async serverConfig(): Promise<ServerConfigResponse> {
+		const url = `${this.config.localUrl}/config`;
+		return this.transport.get(url) as Promise<ServerConfigResponse>;
+	}
+
+	/** Get cloud library processing status. */
+	async libraryStatus(): Promise<LibraryStatusResponse> {
+		return this.authGet("/api/v1/upload-library/status") as Promise<LibraryStatusResponse>;
+	}
+
+	/** Trigger cloud library refresh (Zotero Web API sync). */
+	async libraryRefresh(): Promise<{ status: string }> {
+		return this.authPost("/api/library/refresh", {}) as Promise<{ status: string }>;
 	}
 }

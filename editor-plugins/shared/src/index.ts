@@ -14,6 +14,8 @@ export type {
 	LibraryCheckResult,
 	Collection,
 	Tag,
+	LibraryStatusResponse,
+	ServerConfigResponse,
 } from "./types";
 export { DEFAULT_SETTINGS, getActiveUrl } from "./types";
 
@@ -34,6 +36,7 @@ export {
 	escapeHtml,
 	escapeAttr,
 	confidenceLevel,
+	confidenceLabel,
 	renderHighlightedTextHTML,
 	renderEvidenceHTML,
 	renderResultCardHTML,

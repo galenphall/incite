@@ -107,17 +107,6 @@ All plugins share the `@incite/shared` TypeScript package for API communication 
 
 > For even better results (MRR 0.550 vs 0.428), try the cloud service at [inciteref.com](https://inciteref.com) which uses our best fine-tuned model.
 
-## Fine-Tuning
-
-You can fine-tune your own citation embedder on your training data:
-
-```bash
-pip install incite[finetune]
-incite finetune train --train data.jsonl --dev dev.jsonl
-```
-
-The training pipeline uses Matryoshka representation learning with cached multiple negatives ranking loss, supporting hard negatives for best results.
-
 ## Development
 
 ```bash
@@ -136,7 +125,6 @@ pip install incite[pdf]       # PyMuPDF for PDF text extraction (AGPL)
 pip install incite[zotero]    # pyzotero for Zotero integration (GPL)
 pip install incite[api]       # FastAPI server
 pip install incite[webapp]    # Streamlit UI
-pip install incite[finetune]  # Training pipeline
 pip install incite[tray]      # macOS menu bar app
 pip install incite[all]       # Everything
 ```

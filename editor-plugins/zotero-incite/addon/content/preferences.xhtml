@@ -1,8 +1,9 @@
-<?xml version="1.0"?>
-<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       xmlns:html="http://www.w3.org/1999/xhtml">
+
+	<linkset>
+		<html:link rel="localization" href="addon.ftl" />
+	</linkset>
 
 	<groupbox>
 		<label><html:h2 data-l10n-id="incite-prefs-title" /></label>
@@ -36,30 +37,6 @@
 			<html:input id="incite-pref-apiToken" type="password"
 				preference="extensions.incite.apiToken"
 				style="flex: 1;" />
-		</hbox>
-	</groupbox>
-
-	<groupbox>
-		<label><html:h2 data-l10n-id="incite-prefs-display" /></label>
-
-		<hbox align="center">
-			<label data-l10n-id="incite-prefs-k" />
-			<html:input id="incite-pref-k" type="number" min="1" max="50"
-				preference="extensions.incite.k"
-				style="width: 60px;" />
-		</hbox>
-
-		<hbox align="center">
-			<label data-l10n-id="incite-prefs-author-boost" />
-			<html:input id="incite-pref-authorBoost" type="number" min="0" max="5" step="0.1"
-				preference="extensions.incite.authorBoost"
-				style="width: 80px;" />
-		</hbox>
-
-		<hbox align="center">
-			<checkbox id="incite-pref-showParagraphs"
-				preference="extensions.incite.showParagraphs"
-				data-l10n-id="incite-prefs-show-paragraphs" />
 		</hbox>
 	</groupbox>
 </vbox>

@@ -4,6 +4,21 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.mayacite-collection-filter {
+	margin-bottom: 8px;
+}
+
+.mayacite-collection-select {
+	width: 100%;
+	padding: 4px 8px;
+	font-size: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
 .mayacite-loading,
 .mayacite-error,
 .mayacite-empty {
@@ -79,6 +94,26 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	margin-bottom: 4px;
+}
+
+.mayacite-evidence-toggle {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 2px 0;
+	margin-top: 4px;
+}
+.mayacite-evidence-toggle:hover {
+	color: var(--text-normal);
+}
+
+.mayacite-evidence-content {
+	display: none;
+}
+.mayacite-evidence-content.expanded {
+	display: block;
 }
 
 .mayacite-paragraph {
