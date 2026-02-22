@@ -1,7 +1,7 @@
 """inCite menu bar application.
 
 Requires the ``rumps`` package (macOS only).
-Install with: pip install incite[tray]
+Install with: pip install incite-app[tray]
 """
 
 

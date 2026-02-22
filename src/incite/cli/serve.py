@@ -130,7 +130,7 @@ def cmd_serve(args):
     try:
         import uvicorn
     except ImportError:
-        print("Error: uvicorn not installed. Install with: pip install incite[api]")
+        print("Error: uvicorn not installed. Install with: pip install incite-app[api]")
         sys.exit(1)
 
     mode_map = {
@@ -213,7 +213,7 @@ def cmd_webapp(args):
         print("\nWebapp stopped.")
     except subprocess.CalledProcessError as e:
         if "streamlit" in str(e):
-            print("\nError: Streamlit not installed. Install with: pip install incite[webapp]")
+            print("\nError: Streamlit not installed. Install with: pip install incite-app[webapp]")
             sys.exit(1)
         raise
 
@@ -223,7 +223,7 @@ def cmd_tray(args):
     try:
         from incite.tray import InCiteTray
     except ImportError:
-        print("Error: rumps not installed. Install with: pip install incite[tray]")
+        print("Error: rumps not installed. Install with: pip install incite-app[tray]")
         sys.exit(1)
 
     app = InCiteTray(

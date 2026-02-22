@@ -121,7 +121,7 @@ def reformulate_queries(
     except ImportError:
         raise ImportError(
             "anthropic package required for query reformulation. "
-            "Install with: pip install incite[llm]"
+            "Install with: pip install incite-app[llm]"
         )
 
     api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -201,7 +201,7 @@ def reformulate_queries_batch(
     except ImportError:
         raise ImportError(
             "anthropic package required for query reformulation. "
-            "Install with: pip install incite[llm]"
+            "Install with: pip install incite-app[llm]"
         )
 
     api_key = api_key or os.getenv("ANTHROPIC_API_KEY")

@@ -4,7 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-fastapi = pytest.importorskip("fastapi", reason="fastapi not installed (pip install incite[api])")
+fastapi = pytest.importorskip(
+    "fastapi", reason="fastapi not installed (pip install incite-app[api])"
+)
 from fastapi.testclient import TestClient
 
 from incite import api as api_module
