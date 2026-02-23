@@ -8,6 +8,7 @@ EMBEDDER_CHOICES = [
     "nomic",
     "voyage",
     "minilm-ft",
+    "minilm-ft-onnx",
     "modernbert",
     "scincl",
     "granite",

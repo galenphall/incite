@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.10%2B-brightgreen.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/incite-app.svg)](https://pypi.org/project/incite-app/)
+[![PyPI](https://img.shields.io/pypi/v/incite.svg)](https://pypi.org/project/incite/)
 
 ## Overview
 
@@ -18,7 +18,7 @@ inCite is a local-first citation recommendation system. It indexes your Zotero l
 ## Quick Start
 
 ```bash
-pip install incite-app
+pip install incite
 incite setup
 ```
 
@@ -36,7 +36,7 @@ incite recommend "The relationship between CO2 emissions and global temperature.
 incite serve --embedder minilm-ft
 
 # Start the menu bar app (macOS, manages the server for you)
-pip install incite-app[tray]
+pip install incite[tray]
 incite tray
 ```
 
@@ -121,12 +121,12 @@ ruff check src/incite && ruff format src/incite
 inCite's core is Apache 2.0 licensed. Some optional features depend on copyleft-licensed libraries and are packaged as extras to keep the default installation permissive.
 
 ```bash
-pip install incite-app[pdf]       # PyMuPDF for PDF text extraction (AGPL)
-pip install incite-app[zotero]    # pyzotero for Zotero integration (GPL)
-pip install incite-app[api]       # FastAPI server
-pip install incite-app[webapp]    # Streamlit UI
-pip install incite-app[tray]      # macOS menu bar app
-pip install incite-app[all]       # Everything
+pip install incite[pdf]       # PyMuPDF for PDF text extraction (AGPL)
+pip install incite[zotero]    # pyzotero for Zotero integration (GPL)
+pip install incite[api]       # FastAPI server
+pip install incite[webapp]    # Streamlit UI
+pip install incite[tray]      # macOS menu bar app
+pip install incite[all]       # Everything
 ```
 
 > **Note**: The `pdf` and `zotero` extras pull in AGPL and GPL dependencies respectively. If license compatibility matters for your use case, install only the extras you need.

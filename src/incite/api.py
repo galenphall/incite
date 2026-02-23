@@ -176,6 +176,15 @@ async def lifespan(app: FastAPI):
     mode = os.environ.get("INCITE_MODE", "paper")
     chunking = os.environ.get("INCITE_CHUNKING", "paragraph")
     source_type = os.environ.get("INCITE_SOURCE", "zotero")
+    use_sqlite = os.environ.get("INCITE_SQLITE", "").lower() in ("1", "true", "yes")
+
+    # Auto-enable SQLite pipeline for lite installs (no sentence_transformers)
+    if not use_sqlite and embedder in ("minilm-ft-onnx",):
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            use_sqlite = True
+            logger.info("Lite install detected, using SQLite-backed pipeline")
 
     logger.info(
         "Loading InCiteAgent (source=%s, method=%s, embedder=%s, mode=%s, chunking=%s)...",
@@ -197,6 +206,7 @@ async def lifespan(app: FastAPI):
                 embedder_type=embedder,
                 mode=mode,
                 chunking_strategy=chunking,
+                use_sqlite=use_sqlite,
             )
         elif source_type == "paperpile":
             _agent = InCiteAgent.from_paperpile(

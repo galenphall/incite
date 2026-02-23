@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-fitz = pytest.importorskip("fitz", reason="pymupdf not installed (pip install incite-app[pdf])")
+fitz = pytest.importorskip("fitz", reason="pymupdf not installed (pip install incite[pdf])")
 
 from incite.corpus.folder_source import (
     FolderCorpusSource,

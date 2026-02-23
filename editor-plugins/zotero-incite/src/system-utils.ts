@@ -36,6 +36,11 @@ function serverLogPath(): string {
 	return inciteDir() + (Zotero.isWin ? "\\server.log" : "/server.log");
 }
 
+/** Path to the persistent server PID file (~/.incite/server.pid). */
+function serverPidPath(): string {
+	return inciteDir() + (Zotero.isWin ? "\\server.pid" : "/server.pid");
+}
+
 /** Path to the uv binary. */
 function uvBinPath(): string {
 	return inciteDir() + (Zotero.isWin ? "\\bin\\uv.exe" : "/bin/uv");
@@ -234,10 +239,10 @@ export async function installIncite(): Promise<void> {
 			return;
 		}
 
-		// Step 4: Install incite[lite] into the venv
-		installState = { status: "running", output: "Installing incite[lite]..." };
+		// Step 4: Install incite-app[lite] into the venv
+		installState = { status: "running", output: "Installing incite-app[lite]..." };
 		const vpy = venvPython();
-		const { exitCode, stdout } = await runCommand(uv, ["pip", "install", "incite[lite]", "--python", vpy]);
+		const { exitCode, stdout } = await runCommand(uv, ["pip", "install", "incite-app[lite]", "--prerelease=allow", "--python", vpy]);
 		if (exitCode === 0) {
 			installState = { status: "done", output: stdout };
 		} else {
@@ -256,22 +261,26 @@ export async function startServer(pythonPath: string, embedder?: string): Promis
 	const py = venvCheck.exitCode === 0 ? vpy : pythonPath;
 
 	const emb = embedder ?? "minilm-ft-onnx";
-	const pidFile = Zotero.getTempDirectory().path + "/incite_server.pid";
+	const pidFile = serverPidPath();
 	const logFile = serverLogPath();
 
-	if (Zotero.isWin) {
-		// On Windows, use start /B
-		await runCommand("cmd.exe", [
-			"/c",
-			`start /B ${py} -m incite serve --embedder ${emb} > "${logFile}" 2>&1 & echo %errorlevel% > "${pidFile}"`,
-		]);
-	} else {
-		// On Unix, use nohup + background, capture PID, log output to file
-		await runCommand("/bin/sh", [
-			"-c",
-			`nohup ${py} -m incite serve --embedder ${emb} > "${logFile}" 2>&1 & echo $! > "${pidFile}"`,
-		]);
+	// Launch the server directly via exec() to avoid runCommand's double-shell
+	// quoting issues (runCommand wraps everything in another shell layer which
+	// breaks embedded quotes in the nohup command).
+	const shell = Zotero.isWin ? "C:\\Windows\\System32\\cmd.exe" : "/bin/sh";
+	const shellCmd = Zotero.isWin
+		? `start /B "${py}" -m incite serve --embedder ${emb} > "${logFile}" 2>&1 & echo %errorlevel% > "${pidFile}"`
+		: `nohup "${py}" -m incite serve --embedder ${emb} > "${logFile}" 2>&1 & echo $! > "${pidFile}"`;
+	const shellArgs = Zotero.isWin ? ["/c", shellCmd] : ["-c", shellCmd];
+
+	try {
+		await Zotero.Utilities.Internal.exec(shell, shellArgs);
+	} catch (e) {
+		Zotero.debug(`inCite: startServer exec failed: ${e}`);
 	}
+
+	// Give the background process a moment to write the PID file
+	await Zotero.Promise.delay(500);
 
 	try {
 		const pidStr = await Zotero.File.getContentsAsync(pidFile);
@@ -289,6 +298,17 @@ export async function startServer(pythonPath: string, embedder?: string): Promis
 
 /** Stop the managed server process if one is running. */
 export async function stopManagedServer(): Promise<void> {
+	// If we don't have an in-memory PID, try to read from the persistent file
+	if (managedServerPid == null) {
+		try {
+			const pidStr = await Zotero.File.getContentsAsync(serverPidPath());
+			const pid = parseInt(pidStr.trim(), 10);
+			if (!isNaN(pid)) managedServerPid = pid;
+		} catch {
+			// No PID file — nothing to stop
+			return;
+		}
+	}
 	if (managedServerPid == null) return;
 
 	try {
@@ -301,7 +321,19 @@ export async function stopManagedServer(): Promise<void> {
 		Zotero.debug(`inCite: failed to stop server (PID ${managedServerPid}): ${e}`);
 	}
 
+	// Clean up persistent PID file
+	try {
+		if (Zotero.isWin) {
+			await runCommand("cmd.exe", ["/c", `del "${serverPidPath()}"`]);
+		} else {
+			await runCommand("/bin/sh", ["-c", `rm -f "${serverPidPath()}"`]);
+		}
+	} catch {
+		// Best-effort cleanup
+	}
+
 	managedServerPid = null;
+	processState = { status: "idle", output: "" };
 }
 
 /** Get the managed server PID (if any). */
@@ -349,6 +381,135 @@ export async function getServerLog(lines: number = 50): Promise<string> {
 	}
 }
 
+/** Server stage info returned by log parser and process status. */
+interface ServerStage {
+	stage: string;
+	progress: number;
+	detail?: string;
+}
+
+/** Patterns that indicate a fatal error — checked before progress patterns. */
+const ERROR_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
+	{ pattern: /Failed to load agent:\s*(.+)/, message: "Failed to load agent" },
+	{ pattern: /ModuleNotFoundError:\s*No module named '([^']+)'/, message: "Missing package" },
+	{ pattern: /ImportError:\s*(.+)/, message: "Import error" },
+	{ pattern: /OSError:\s*(.+)/, message: "OS error" },
+];
+
+/** Known log patterns mapped to friendly stage names and progress percentages. */
+const STAGE_PATTERNS: Array<{ pattern: RegExp; stage: string; progress: number }> = [
+	{ pattern: /Agent ready/, stage: "Almost ready...", progress: 90 },
+	{ pattern: /Evidence store loaded/, stage: "Loading evidence...", progress: 80 },
+	{ pattern: /Building paragraph-level index|Building sentence-level index/, stage: "Building chunk index...", progress: 60 },
+	{ pattern: /Building paper-level index/, stage: "Embedding papers...", progress: 30 },
+	{ pattern: /Loading InCiteAgent/, stage: "Initializing...", progress: 10 },
+];
+
+/** Parse the server log to detect the current loading stage. */
+async function detectServerStage(): Promise<ServerStage> {
+	const log = await getServerLog(100);
+	if (!log) return { stage: "Loading...", progress: 10 };
+
+	const lines = log.split("\n");
+
+	// Check for errors first (scan forward to find earliest error)
+	for (const line of lines) {
+		for (const { pattern, message } of ERROR_PATTERNS) {
+			const match = pattern.exec(line);
+			if (match) {
+				const detail = match[1] ? match[1].trim() : line.trim();
+				return { stage: message, progress: -1, detail };
+			}
+		}
+	}
+
+	// Scan lines in reverse to find the most recent recognized progress pattern
+	for (const line of lines.reverse()) {
+		for (const { pattern, stage, progress } of STAGE_PATTERNS) {
+			if (pattern.test(line)) {
+				return { stage, progress };
+			}
+		}
+	}
+
+	return { stage: "Loading...", progress: 10 };
+}
+
+/** Detect a running server by probing the health endpoint and checking the PID file. */
+async function detectRunningServer(): Promise<{ running: boolean; pid?: number; ready?: boolean }> {
+	// Probe health endpoint
+	const health = await runCommand("curl", ["-s", "-m", "2", "http://127.0.0.1:8230/health"]);
+	if (health.exitCode !== 0 || !health.stdout.includes('"status"')) {
+		return { running: false };
+	}
+
+	const ready = health.stdout.includes('"ready":true') || health.stdout.includes('"ready": true');
+
+	// Try to read PID from persistent file and verify it's alive
+	let pid: number | undefined;
+	try {
+		const pidStr = await Zotero.File.getContentsAsync(serverPidPath());
+		const parsed = parseInt(pidStr.trim(), 10);
+		if (!isNaN(parsed)) {
+			const alive = await runCommand("/bin/sh", ["-c", `kill -0 ${parsed} 2>/dev/null && echo alive`]);
+			if (alive.stdout === "alive") {
+				pid = parsed;
+				managedServerPid = parsed;
+			}
+		}
+	} catch {
+		// PID file missing — server may have been started externally
+	}
+
+	return { running: true, pid, ready };
+}
+
+/** Get structured process status with auto-detection of running servers. */
+export async function getProcessStatus(): Promise<{
+	status: string; output: string;
+	stage?: string; progress?: number; detail?: string;
+}> {
+	if (processState.status === "idle") {
+		// Check if a server is already running (e.g. survived a Zotero restart)
+		try {
+			const detected = await detectRunningServer();
+			if (detected.running && detected.ready) {
+				return { status: "done", output: "Server ready", stage: "Server ready", progress: 100 };
+			}
+			if (detected.running) {
+				const stageInfo = await detectServerStage();
+				// progress === -1 means an error was found in the log
+				if (stageInfo.progress < 0) {
+					return { status: "error", output: stageInfo.detail || stageInfo.stage, stage: stageInfo.stage, progress: 0, detail: stageInfo.detail };
+				}
+				return { status: "running", output: stageInfo.stage, ...stageInfo };
+			}
+		} catch {
+			// Detection failed — return idle
+		}
+		return { status: "idle", output: "" };
+	}
+
+	if (processState.status === "running") {
+		// Augment with log-based stage detection
+		try {
+			const stageInfo = await detectServerStage();
+			if (stageInfo.progress < 0) {
+				return { status: "error", output: stageInfo.detail || stageInfo.stage, stage: stageInfo.stage, progress: 0, detail: stageInfo.detail };
+			}
+			return { ...processState, ...stageInfo };
+		} catch {
+			return { ...processState, stage: "Loading...", progress: 10 };
+		}
+	}
+
+	// done or error — return as-is
+	if (processState.status === "done") {
+		return { ...processState, stage: "Server ready", progress: 100 };
+	}
+	return { ...processState };
+}
+
 /** Process the Zotero library by starting the server (which auto-builds the index). */
 export async function processLibrary(embedder?: string): Promise<void> {
 	if (processState.status === "running") return;
@@ -374,16 +535,45 @@ export async function processLibrary(embedder?: string): Promise<void> {
 		}
 
 		// Step 3: Start the server (which builds the index on first run)
-		// startServer() already logs output to ~/.incite/server.log
 		const result = await startServer(vpy, emb);
 
-		if (result.pid) {
-			processState = { status: "done", output: `Server running (PID ${result.pid})` };
-		} else {
-			// Check log for errors
+		if (!result.pid) {
 			const log = await getServerLog(20);
 			processState = { status: "error", output: log || "Server failed to start (no PID captured)" };
+			return;
 		}
+
+		// Step 4: Poll the server health endpoint until it's actually ready
+		processState = { status: "running", output: "Server started, waiting for it to load..." };
+		const healthUrl = "http://127.0.0.1:8230/health";
+		const maxAttempts = 120; // 10 minutes at 5-second intervals
+		for (let i = 0; i < maxAttempts; i++) {
+			await new Promise(resolve => setTimeout(resolve, 5000));
+
+			// Check if the process is still alive
+			const alive = await runCommand("/bin/sh", ["-c", `kill -0 ${result.pid} 2>/dev/null && echo alive`]);
+			if (alive.stdout !== "alive") {
+				const log = await getServerLog(30);
+				processState = { status: "error", output: "Server process exited.\n" + log };
+				return;
+			}
+
+			// Try the health endpoint via curl
+			const health = await runCommand("curl", ["-s", "-m", "3", healthUrl]);
+			if (health.exitCode === 0 && health.stdout.includes('"ready":true')) {
+				processState = { status: "done", output: `Server ready (PID ${result.pid})` };
+				return;
+			}
+
+			// Update progress from the server log tail
+			const logTail = await getServerLog(3);
+			if (logTail) {
+				const lastLine = logTail.split("\n").filter(l => l.trim()).pop() ?? "";
+				processState = { status: "running", output: lastLine || "Loading..." };
+			}
+		}
+
+		processState = { status: "error", output: "Server did not become ready within 10 minutes" };
 	} catch (e) {
 		processState = { status: "error", output: String(e) };
 	}

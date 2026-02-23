@@ -5,12 +5,15 @@ As the pipeline evolves (new embedders, better fusion methods), update this
 module and all consumers automatically benefit.
 """
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, Optional
 
 from incite.embeddings.base import BaseEmbedder
 from incite.interfaces import Retriever
 from incite.models import Chunk, Paper
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from incite.embeddings.chunk_store import ChunkStore
@@ -195,6 +198,14 @@ def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
     Raises:
         ValueError: If embedder_type is unknown or cloud-only without local model files.
     """
+    # Auto-fallback: minilm-ft → minilm-ft-onnx if torch/sentence_transformers not available
+    if embedder_type == "minilm-ft":
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            logger.info("sentence_transformers not available, falling back to minilm-ft-onnx")
+            embedder_type = "minilm-ft-onnx"
+
     if embedder_type in _embedder_cache:
         return _embedder_cache[embedder_type]
 

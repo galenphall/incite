@@ -96,7 +96,7 @@ def enrich_corpus(
         import anthropic
     except ImportError:
         raise ImportError(
-            "anthropic package required for LLM enrichment. Install with: pip install incite-app[llm]"
+            "anthropic package required for LLM enrichment. Install with: pip install incite[llm]"
         )
 
     api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -184,7 +184,7 @@ def enrich_corpus_batch(
         import anthropic
     except ImportError:
         raise ImportError(
-            "anthropic package required for LLM enrichment. Install with: pip install incite-app[llm]"
+            "anthropic package required for LLM enrichment. Install with: pip install incite[llm]"
         )
 
     api_key = api_key or os.getenv("ANTHROPIC_API_KEY")

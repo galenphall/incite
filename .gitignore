@@ -66,9 +66,12 @@ data/processed/openalex_to_arxiv_all.json
 
 # Models (large files)
 models/
+# Exception: bundled ONNX model inside the package (distributed via wheel)
+!src/incite/models/
 *.bin
 *.pt
 *.onnx
+!src/incite/models/minilm-onnx/model.onnx
 
 # Logs
 *.log
@@ -94,7 +97,14 @@ Thumbs.db
 .claude/worktrees/
 .claude-flow/
 .swarm/
+.serena/
 conversation.txt
+
+# Analysis / cache artifacts
+data/analysis/
+
+# Saved HTML pages
+editor-plugins/chrome-incite-v2/html/
 
 # Google Apps Script
 .clasp.json

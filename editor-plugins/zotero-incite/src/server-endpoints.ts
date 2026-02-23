@@ -3,7 +3,7 @@
  * Serves the browser panel and exposes Zotero settings to it.
  */
 import { loadClientConfig, setPref } from "./prefs";
-import { findPython, checkIncite, installIncite, getInstallState, startServer, stopManagedServer, processLibrary, getProcessState } from "./system-utils";
+import { findPython, checkIncite, installIncite, getInstallState, startServer, stopManagedServer, processLibrary, getProcessStatus } from "./system-utils";
 import { uploadToCloud, getUploadState } from "./cloud-upload";
 import { syncFromCloud, getSyncState } from "./cloud-sync";
 
@@ -227,8 +227,12 @@ export function registerServerEndpoints(): void {
 		supportedMethods: ["GET"],
 		supportedDataTypes: ["application/json"],
 		permitBookmarklet: true,
-		init() {
-			return jsonResponse(getProcessState());
+		async init() {
+			try {
+				return jsonResponse(await getProcessStatus());
+			} catch (e) {
+				return errorResponse(500, String(e));
+			}
 		},
 	};
 	Zotero.Server.Endpoints["/incite/system/process/status"] = ProcessStatusEndpoint;

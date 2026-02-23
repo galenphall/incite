@@ -254,14 +254,45 @@ async function stopLocalServer(): Promise<void> {
 	btnStopServer.disabled = false;
 }
 
+/** Update the process progress bar UI from a status response. */
+function updateProcessProgressBar(state: { status: string; output: string; stage?: string; progress?: number; detail?: string }): void {
+	const progressDiv = document.getElementById("setup-process-progress")!;
+	const stageText = document.getElementById("process-stage-text")!;
+	const pctText = document.getElementById("process-progress-pct")!;
+	const progressFill = document.getElementById("process-progress-fill")! as HTMLElement;
+	const detailText = document.getElementById("process-detail-text")!;
+
+	progressDiv.style.display = "block";
+
+	if (state.status === "error") {
+		stageText.textContent = state.stage || "Error";
+		stageText.style.color = "var(--red, #e55)";
+		pctText.textContent = "";
+		progressFill.style.width = "0%";
+		progressFill.style.background = "var(--red, #e55)";
+		detailText.textContent = state.detail || state.output || "";
+		detailText.style.color = "var(--red, #e55)";
+		return;
+	}
+
+	// Reset error styling
+	stageText.style.color = "";
+	progressFill.style.background = "";
+	detailText.style.color = "";
+
+	stageText.textContent = state.stage || state.output || "Processing...";
+	const pct = state.progress ?? 0;
+	pctText.textContent = `${pct}%`;
+	progressFill.style.width = `${pct}%`;
+	detailText.textContent = state.detail || "";
+}
+
 async function processLibrary(): Promise<void> {
 	const progressDiv = document.getElementById("setup-process-progress")!;
-	const progressText = document.getElementById("process-progress-text")!;
 	const processStatus = document.getElementById("setup-process-status")!;
 
 	btnProcessLibrary.disabled = true;
-	progressDiv.style.display = "block";
-	progressText.textContent = "Starting library processing...";
+	updateProcessProgressBar({ status: "running", output: "Starting library processing...", stage: "Starting...", progress: 0 });
 	processStatus.textContent = "Processing...";
 
 	try {
@@ -272,18 +303,24 @@ async function processLibrary(): Promise<void> {
 			pollCount++;
 			try {
 				const resp = await fetch(CONNECTOR + "/incite/system/process/status");
-				const state = await resp.json() as { status: string; output: string };
+				const state = await resp.json() as { status: string; output: string; stage?: string; progress?: number; detail?: string };
 				if (state.status === "running" || state.status === "idle") {
-					progressText.textContent = state.output || "Processing...";
+					updateProcessProgressBar(state);
 					setTimeout(poll, 3000);
 				} else if (state.status === "done") {
-					progressDiv.style.display = "none";
-					processStatus.textContent = "Ready";
+					updateProcessProgressBar({ status: "done", output: "Server ready", stage: "Server ready", progress: 100 });
+					setTimeout(() => {
+						progressDiv.style.display = "none";
+						processStatus.textContent = "Ready";
+					}, 1000);
 					showToast("Library processed successfully");
 					startPolling(5_000);
 				} else if (state.status === "error") {
 					const out = state.output ?? "";
-					progressText.textContent = "Failed: " + (out.length > 300 ? "..." + out.slice(-300) : out);
+					const stageText = document.getElementById("process-stage-text")!;
+					stageText.textContent = "Failed: " + (out.length > 300 ? "..." + out.slice(-300) : out);
+					const pctText = document.getElementById("process-progress-pct")!;
+					pctText.textContent = "";
 					processStatus.textContent = "Error";
 					btnProcessLibrary.disabled = false;
 				}
@@ -291,14 +328,16 @@ async function processLibrary(): Promise<void> {
 				if (pollCount < 60) {
 					setTimeout(poll, 3000);
 				} else {
-					progressText.textContent = "Status unknown — check Zotero console";
+					const stageText = document.getElementById("process-stage-text")!;
+					stageText.textContent = "Status unknown — check Zotero console";
 					btnProcessLibrary.disabled = false;
 				}
 			}
 		};
 		setTimeout(poll, 3000);
 	} catch {
-		progressText.textContent = "Failed to start processing";
+		const stageText = document.getElementById("process-stage-text")!;
+		stageText.textContent = "Failed to start processing";
 		processStatus.textContent = "Error";
 		btnProcessLibrary.disabled = false;
 	}
@@ -502,19 +541,57 @@ async function refreshLocalStatus(): Promise<void> {
 		const client = makeClient();
 		const health = await client.health();
 
-		setStatus("connected", `Connected — ${health.corpus_size ?? "?"} papers`);
-		localConnected.style.display = "block";
-		localDisconnected.style.display = "none";
-
 		// Update setup controls for running state
 		const serverStatus = document.getElementById("setup-server-status");
 		if (serverStatus) serverStatus.textContent = "Running";
 		if (btnStartServer) { btnStartServer.style.display = "none"; }
 		if (btnStopServer) { btnStopServer.style.display = "inline-block"; }
 
+		if (!health.ready) {
+			// Server is running but not ready — could be loading or failed
+			localConnected.style.display = "none";
+			localDisconnected.style.display = "block";
+
+			const processStatus = document.getElementById("setup-process-status");
+
+			// Fetch structured status (auto-detects errors via log parsing)
+			try {
+				const resp = await fetch(CONNECTOR + "/incite/system/process/status");
+				const state = await resp.json() as { status: string; output: string; stage?: string; progress?: number; detail?: string };
+
+				if (state.status === "error") {
+					setStatus("error", "Server error");
+					if (processStatus) processStatus.textContent = "Error";
+					updateProcessProgressBar(state);
+					btnProcessLibrary.disabled = false;
+				} else {
+					setStatus("connected", "Loading...");
+					if (processStatus) processStatus.textContent = "Loading...";
+					btnProcessLibrary.disabled = true;
+					if (state.stage || state.progress) {
+						updateProcessProgressBar(state);
+					}
+				}
+			} catch {
+				setStatus("connected", "Loading...");
+				if (processStatus) processStatus.textContent = "Loading...";
+				btnProcessLibrary.disabled = true;
+			}
+			return;
+		}
+
+		setStatus("connected", `Connected — ${health.corpus_size ?? "?"} papers`);
+		localConnected.style.display = "block";
+		localDisconnected.style.display = "none";
+
 		// Library is processed if server is running with papers
 		const processStatus = document.getElementById("setup-process-status");
 		if (processStatus) processStatus.textContent = `Ready (${health.corpus_size ?? 0} papers)`;
+
+		// Hide progress bar if it was showing
+		const progressDiv = document.getElementById("setup-process-progress");
+		if (progressDiv) progressDiv.style.display = "none";
+		btnProcessLibrary.disabled = false;
 
 		document.getElementById("local-corpus")!.textContent = String(health.corpus_size ?? "—");
 
@@ -542,7 +619,6 @@ async function refreshLocalStatus(): Promise<void> {
 			btnStartServer.textContent = "Start Server";
 		}
 		if (btnStopServer) { btnStopServer.style.display = "none"; }
-		checkSystem();
 	}
 }
 
@@ -583,7 +659,8 @@ async function refreshCloudStatus(gen?: number): Promise<number> {
 
 		// Progress bar
 		const progressSection = document.getElementById("cloud-progress")!;
-		if (status.job_status && status.job_status !== "idle") {
+		const terminalStates = new Set(["idle", "completed", "failed"]);
+		if (status.job_status && !terminalStates.has(status.job_status)) {
 			progressSection.style.display = "block";
 			document.getElementById("progress-stage")!.textContent = capitalize(status.stage ?? "Processing");
 			if (status.current != null && status.total != null && status.total > 0) {

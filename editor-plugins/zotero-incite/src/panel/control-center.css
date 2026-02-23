@@ -80,16 +80,14 @@ body {
 
 .header-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
 }
 
-.logo-text {
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 600;
+.logo-svg {
+  height: 18px;
+  width: auto;
   color: var(--fg);
-  letter-spacing: -0.02em;
 }
 
 .header-subtitle {

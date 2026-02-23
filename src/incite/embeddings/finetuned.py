@@ -195,6 +195,7 @@ class OnnxMiniLMEmbedder(BaseEmbedder):
     """
 
     DEFAULT_ONNX_PATH = "models/minilm-citation-v4/onnx"
+    PACKAGE_MODEL_DIR = "models/minilm-onnx"
 
     def __init__(
         self,
@@ -216,14 +217,23 @@ class OnnxMiniLMEmbedder(BaseEmbedder):
         from transformers import AutoTokenizer
 
         path = Path(self.model_path)
+
+        # Try explicit path first, then package-bundled model
         if not path.exists():
-            raise FileNotFoundError(
-                f"ONNX model not found at {path}. Export with: model.export_onnx('{path}')"
-            )
+            import importlib.resources
+
+            package_path = Path(importlib.resources.files("incite") / self.PACKAGE_MODEL_DIR)
+            if package_path.exists():
+                path = package_path
+            else:
+                raise FileNotFoundError(
+                    f"ONNX model not found at {self.model_path} or in package. "
+                    f"Install with: pip install incite-app[lite]"
+                )
 
         self._tokenizer = AutoTokenizer.from_pretrained(str(path))
         self._model = ORTModelForFeatureExtraction.from_pretrained(str(path))
-        self._dimension = 384  # MiniLM-L6-v2 output dimension
+        self._dimension = 384  # MiniLM-L6-v2 output dimension  # MiniLM-L6-v2 output dimension
 
     @property
     def dimension(self) -> int:

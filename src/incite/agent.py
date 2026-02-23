@@ -269,6 +269,7 @@ class InCiteAgent:
         mode: str = "paper",
         force_refresh: bool = False,
         chunking_strategy: str = "paragraph",
+        use_sqlite: bool = False,
     ) -> "InCiteAgent":
         """Initialize from local Zotero library.
 
@@ -283,6 +284,8 @@ class InCiteAgent:
             force_refresh: If True, re-read from Zotero database ignoring cache
             chunking_strategy: Chunking strategy for paragraph mode
                 ("paragraph", "sentence", "grobid")
+            use_sqlite: If True, use SQLite-backed pipeline (LibraryDB) for storage
+                and build FAISS indexes in-memory from stored embeddings.
 
         Returns:
             Configured InCiteAgent instance
@@ -312,6 +315,19 @@ class InCiteAgent:
         papers = load_zotero_direct(zotero_path, force_refresh=force_refresh)
         paper_dict = {p.id: p for p in papers}
 
+        # ── SQLite-backed pipeline ──────────────────────────────────────
+        if use_sqlite:
+            return cls._from_zotero_sqlite(
+                papers=papers,
+                paper_dict=paper_dict,
+                method=method,
+                embedder_type=embedder_type,
+                mode=mode,
+                chunking_strategy=chunking_strategy,
+                force_refresh=force_refresh,
+            )
+
+        # ── Legacy JSONL + FAISS pipeline ───────────────────────────────
         if mode == "paragraph":
             # Check if we have full text on papers OR cached chunks file
             cache_dir = get_cache_dir()
@@ -409,6 +425,129 @@ class InCiteAgent:
                 evidence_chunks=evidence_chunks,
                 two_stage=two_stage,
             )
+
+    @classmethod
+    def _from_zotero_sqlite(
+        cls,
+        papers: list,
+        paper_dict: dict,
+        method: str,
+        embedder_type: str,
+        mode: str,
+        chunking_strategy: str,
+        force_refresh: bool,
+    ) -> "InCiteAgent":
+        """SQLite-backed pipeline: store papers/chunks/embeddings in library.db.
+
+        Builds FAISS indexes in-memory from stored embeddings. Embeds only
+        new/changed papers and chunks incrementally.
+        """
+        from incite.retrieval.factory import get_chunker, get_embedder
+        from incite.storage.library_db import LibraryDB
+
+        db = LibraryDB()
+        embedder = get_embedder(embedder_type)
+
+        # 1. Upsert papers and detect which need embedding
+        papers_needing_embed = db.upsert_papers(papers)
+        logger.info(
+            "Library: %d papers total, %d need embedding",
+            len(papers),
+            len(papers_needing_embed),
+        )
+
+        # 2. Chunk papers that need embedding (new or changed)
+        if papers_needing_embed:
+            papers_to_chunk = [p for p in papers if p.id in set(papers_needing_embed)]
+            chunker = get_chunker(chunking_strategy)
+            new_chunks = chunker(papers_to_chunk, show_progress=False)
+
+            # Remove old chunks for re-chunked papers, then insert new ones
+            db.delete_chunks_for_papers(papers_needing_embed)
+            db.upsert_chunks(new_chunks)
+            logger.info("Chunked %d papers → %d chunks", len(papers_to_chunk), len(new_chunks))
+
+        # 3. Embed papers that need it
+        paper_ids_to_embed = db.needs_embedding("papers")
+        if paper_ids_to_embed:
+            embed_texts = db.get_embedding_texts(paper_ids_to_embed, "papers")
+            texts = [embed_texts[pid] for pid in paper_ids_to_embed]
+            paper_embeddings = embedder.embed(texts, show_progress=True)
+            db.store_embeddings(paper_ids_to_embed, paper_embeddings, "papers")
+            logger.info("Embedded %d papers", len(paper_ids_to_embed))
+
+        # 4. Embed chunks that need it
+        chunk_ids_to_embed = db.needs_embedding("chunks")
+        if chunk_ids_to_embed:
+            embed_texts = db.get_embedding_texts(chunk_ids_to_embed, "chunks")
+            texts = [embed_texts[cid] for cid in chunk_ids_to_embed]
+            chunk_embeddings = embedder.embed(texts, show_progress=True)
+            db.store_embeddings(chunk_ids_to_embed, chunk_embeddings, "chunks")
+            logger.info("Embedded %d chunks", len(chunk_ids_to_embed))
+
+        # 5. Build FAISS index for papers from stored embeddings
+        all_paper_ids, all_paper_vecs = db.load_paper_embeddings()
+        from incite.embeddings.stores import FAISSStore
+
+        paper_store = FAISSStore(dimension=embedder.dimension, embedder_type=embedder_type)
+        paper_store.add(all_paper_ids, all_paper_vecs)
+
+        from incite.retrieval.factory import create_retriever
+
+        retriever = create_retriever(
+            papers,
+            method=method,
+            embedder_type=embedder_type,
+            storage_backend=paper_store,
+            show_progress=False,
+        )
+
+        # 6. Build evidence store from chunk embeddings
+        evidence_store = None
+        evidence_chunks = None
+        two_stage = False
+
+        all_chunk_ids, all_chunk_vecs = db.load_chunk_embeddings()
+        if len(all_chunk_ids) > 0:
+            from incite.embeddings.chunk_store import ChunkStore
+
+            chunks_list = db.get_chunks()
+            chunk_dict = {c.id: c for c in chunks_list}
+
+            chunk_store = ChunkStore(dimension=embedder.dimension, embedder_type=embedder_type)
+            # Only add chunks that have embeddings
+            embedded_chunks = [chunk_dict[cid] for cid in all_chunk_ids if cid in chunk_dict]
+            chunk_store.add_chunks(embedded_chunks, all_chunk_vecs)
+
+            evidence_chunks = chunk_dict
+            evidence_store = chunk_store
+
+            # Upgrade to TwoStageRetriever
+            from incite.retrieval.two_stage import TwoStageRetriever
+
+            retriever = TwoStageRetriever(
+                paper_retriever=retriever,
+                chunk_store=evidence_store,
+                chunks=evidence_chunks,
+                embedder=embedder,
+            )
+            two_stage = True
+            logger.info(
+                "SQLite pipeline: %d papers, %d chunks, TwoStageRetriever",
+                len(all_paper_ids),
+                len(all_chunk_ids),
+            )
+
+        return cls(
+            retriever=retriever,
+            papers=paper_dict,
+            method=method,
+            embedder_type=embedder_type,
+            mode=mode,
+            evidence_store=evidence_store,
+            evidence_chunks=evidence_chunks,
+            two_stage=two_stage,
+        )
 
     @classmethod
     def from_paperpile(
