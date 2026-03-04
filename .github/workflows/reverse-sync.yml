@@ -1,0 +1,67 @@
+name: Reverse Sync to Private
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  reverse-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get changed files
+        id: changes
+        run: |
+          FILES=$(git diff --name-only HEAD~1 HEAD | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "Changed files: $FILES"
+
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: galenphall/incite-private
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: private
+
+      - name: Apply changes to private repo
+        run: |
+          for file in ${{ steps.changes.outputs.files }}; do
+            if [ -f "$file" ]; then
+              mkdir -p "private/$(dirname "$file")"
+              cp "$file" "private/$file"
+            elif [ ! -f "$file" ] && [ -f "private/$file" ]; then
+              rm "private/$file"
+            fi
+          done
+
+      - name: Create PR on private repo
+        working-directory: private
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="reverse-sync/$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to sync"
+            exit 0
+          fi
+
+          git commit -m "reverse-sync: apply public repo changes"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --repo galenphall/incite-private \
+            --title "Reverse sync from public repo" \
+            --body "Automatically generated from public repo merge to main.
+
+          Source: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
