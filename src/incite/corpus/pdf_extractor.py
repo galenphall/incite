@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from incite.utils.dependencies import require_pymupdf
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,12 +38,7 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
     Returns:
         PDFExtractionResult with full_text, paragraphs, and section_headings
     """
-    try:
-        import fitz
-    except ImportError:
-        raise ImportError(
-            "PyMuPDF is required for PDF extraction. Install with: pip install pymupdf"
-        )
+    fitz = require_pymupdf("PDF text extraction")
 
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
