@@ -62,8 +62,7 @@ The codebase is organized by feature/domain:
 | `src/incite/evaluation/` | Metrics (MRR, R@k, C-index), experiment logging, significance tests |
 | `src/incite/cli/` | CLI subcommands (Click-based) |
 | `src/incite/finetuning/` | Training data generation and model training pipeline |
-| `editor-plugins/` | Editor integrations (Obsidian, VS Code, Google Docs, Chrome) |
-| `cloud/` | Cloud service: multi-user web tier and GROBID processing |
+| `editor-plugins/` | Editor integrations (Obsidian, VS Code, Google Docs, Chrome, Zotero) |
 
 ## 7. Canonical Embedding Text Format
 
@@ -87,7 +86,13 @@ Never use raw string concatenation to build embedding text. Never use `[SEP]` as
 5. Write a clear PR description explaining **why** the change is needed, not just what changed.
 6. If your change affects retrieval quality, include evaluation results (`incite evaluate --method hybrid`).
 
-## 9. Reporting Issues
+## 9. How Contributions Are Integrated
+
+When your PR is merged to main, a GitHub Action automatically creates a corresponding
+PR on our private development repo. This ensures your changes are integrated into the
+full codebase. You don't need to do anything -- this happens automatically.
+
+## 10. Reporting Issues
 
 Use [GitHub Issues](https://github.com/galenphall/incite/issues) to report bugs or request features.
 
@@ -104,7 +109,7 @@ For performance issues, also include:
 - Your corpus size (number of papers).
 - Whether you are using hybrid or neural-only retrieval.
 
-## 10. Code of Conduct
+## 11. Code of Conduct
 
 We are committed to providing a welcoming and respectful environment for everyone. Contributors are expected to:
 
