@@ -12,7 +12,15 @@ export interface UploadState {
 	total?: number;
 }
 
+export interface SyncMetadataState {
+	status: "idle" | "reading" | "syncing" | "done" | "error";
+	message: string;
+	updated?: number;
+	skipped?: number;
+}
+
 let uploadState: UploadState = { status: "idle", message: "" };
+let syncMetadataState: SyncMetadataState = { status: "idle", message: "" };
 
 export function getUploadState(): UploadState {
 	return { ...uploadState };
@@ -53,14 +61,20 @@ export async function uploadToCloud(serverUrl: string, apiToken: string): Promis
 		// Step 2: Upload metadata
 		uploadState = { status: "uploading_metadata", message: `Uploading metadata for ${papers.length} papers...` };
 		const metadataBody = {
+			source: "zotero-plugin",
 			papers: papers.map((p) => ({
 				id: p.id,
 				title: p.title,
 				abstract: p.abstract,
 				authors: p.authors,
+				structured_authors: p.structured_authors,
 				year: p.year,
 				doi: p.doi,
 				journal: p.journal,
+				volume: p.volume,
+				issue: p.issue,
+				pages: p.pages,
+				item_type: p.item_type,
 			})),
 		};
 
@@ -86,20 +100,44 @@ export async function uploadToCloud(serverUrl: string, apiToken: string): Promis
 
 			for (let i = 0; i < papersWithPdf.length; i += PDF_BATCH_SIZE) {
 				const batch = papersWithPdf.slice(i, i + PDF_BATCH_SIZE);
-				const formData = new FormData();
+
+				// Build multipart body manually — FormData/Blob are unavailable in Zotero's Gecko environment
+				const boundary = "----IncitePdfUpload" + Date.now();
+				const parts: Uint8Array[] = [];
+				const encoder = new TextEncoder();
 
 				for (const paper of batch) {
 					const bytes = await IOUtils.read(paper.pdfPath!);
-					const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
-					formData.append("files", blob, `${paper.id}.pdf`);
+					const header =
+						`--${boundary}\r\n` +
+						`Content-Disposition: form-data; name="files"; filename="${paper.id}.pdf"\r\n` +
+						`Content-Type: application/pdf\r\n\r\n`;
+					parts.push(encoder.encode(header));
+					parts.push(bytes);
+					parts.push(encoder.encode("\r\n"));
+				}
+				parts.push(encoder.encode(`--${boundary}--\r\n`));
+
+				// Concatenate all parts into a single Uint8Array
+				let totalLen = 0;
+				for (const p of parts) totalLen += p.length;
+				const body = new Uint8Array(totalLen);
+				let offset = 0;
+				for (const p of parts) {
+					body.set(p, offset);
+					offset += p.length;
 				}
 
-				const pdfResp = await fetch(`${baseUrl}/api/v1/upload-library/pdfs`, {
-					method: "POST",
-					headers: { Authorization: `Bearer ${apiToken}` },
-					body: formData,
+				const pdfResp = await Zotero.HTTP.request("POST", `${baseUrl}/api/v1/upload-library/pdfs`, {
+					headers: {
+						...authHeaders,
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					},
+					body,
+					responseType: "text",
+					timeout: 120000,
 				});
-				if (!pdfResp.ok) {
+				if (pdfResp.status < 200 || pdfResp.status >= 300) {
 					throw new Error(`PDF upload failed: HTTP ${pdfResp.status}`);
 				}
 
@@ -124,8 +162,101 @@ export async function uploadToCloud(serverUrl: string, apiToken: string): Promis
 			throw new Error(`Process trigger failed: HTTP ${procResp.status}`);
 		}
 
+		// Step 5: Sync metadata (pushes full author names from Zotero)
+		try {
+			const syncBody = {
+				papers: papers.map((p) => ({
+					id: p.id,
+					title: p.title,
+					abstract: p.abstract,
+					authors: p.authors,
+					structured_authors: p.structured_authors,
+					year: p.year,
+					doi: p.doi,
+					journal: p.journal,
+					volume: p.volume,
+					issue: p.issue,
+					pages: p.pages,
+					item_type: p.item_type,
+				})),
+			};
+			await Zotero.HTTP.request("POST", `${baseUrl}/api/v1/upload-library/sync-metadata`, {
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify(syncBody),
+				responseType: "text",
+				timeout: 60000,
+			});
+		} catch {
+			// Best-effort — upload still succeeded even if metadata sync fails
+		}
+
 		uploadState = { status: "done", message: "Upload complete! Server is processing your library." };
 	} catch (e) {
 		uploadState = { status: "error", message: String(e) };
+	}
+}
+
+export function getSyncMetadataState(): SyncMetadataState {
+	return { ...syncMetadataState };
+}
+
+/**
+ * Sync metadata only (no PDFs, no reprocessing).
+ * Pushes current Zotero metadata to the cloud to update author names, etc.
+ */
+export async function syncMetadataToCloud(serverUrl: string, apiToken: string): Promise<void> {
+	const baseUrl = serverUrl.replace(/\/+$/, "");
+	const authHeaders: Record<string, string> = {
+		Authorization: `Bearer ${apiToken}`,
+		Accept: "application/json",
+	};
+
+	try {
+		syncMetadataState = { status: "reading", message: "Reading Zotero library..." };
+		const papers = await readZoteroLibrary();
+
+		if (papers.length === 0) {
+			syncMetadataState = { status: "error", message: "No papers found in Zotero library" };
+			return;
+		}
+
+		syncMetadataState = { status: "syncing", message: `Syncing metadata for ${papers.length} papers...` };
+		const body = {
+			papers: papers.map((p) => ({
+				id: p.id,
+				title: p.title,
+				abstract: p.abstract,
+				authors: p.authors,
+				structured_authors: p.structured_authors,
+				year: p.year,
+				doi: p.doi,
+				journal: p.journal,
+				volume: p.volume,
+				issue: p.issue,
+				pages: p.pages,
+				item_type: p.item_type,
+			})),
+		};
+
+		const resp = await Zotero.HTTP.request("POST", `${baseUrl}/api/v1/upload-library/sync-metadata`, {
+			headers: { ...authHeaders, "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			responseType: "text",
+			timeout: 60000,
+		});
+
+		if (resp.status < 200 || resp.status >= 300) {
+			throw new Error(`Metadata sync failed: HTTP ${resp.status}`);
+		}
+
+		const result = JSON.parse(resp.responseText);
+		syncMetadataState = {
+			status: "done",
+			message: `Synced metadata: ${result.updated} updated, ${result.skipped} skipped`,
+			updated: result.updated,
+			skipped: result.skipped,
+		};
+	} catch (e) {
+		syncMetadataState = { status: "error", message: String(e) };
 	}
 }

@@ -49,9 +49,35 @@
         Cloud Server URL
         <input type="text" id="setting-cloudUrl" class="settings-input" placeholder="https://inciteref.com">
       </label>
-      <label class="settings-label" id="label-apiToken" style="display:none;">
-        API Token
-        <input type="password" id="setting-apiToken" class="settings-input" placeholder="Your API token">
+      <div id="label-apiToken" class="settings-label" style="display:none;">
+        <!-- Shown when NOT connected -->
+        <div id="auth-disconnected" style="display:none;">
+          <button id="btn-cloud-signin" class="btn-primary" style="width:100%; margin-top:4px;">
+            Sign in to inCite
+          </button>
+          <div id="auth-pending" style="display:none; text-align:center; margin-top:8px;">
+            <span style="font-size:13px; color:var(--fg-muted);">Waiting for login in browser...</span>
+          </div>
+          <details style="margin-top:8px;">
+            <summary style="font-size:12px; color:var(--fg-muted); cursor:pointer;">Enter token manually</summary>
+            <input type="password" id="setting-apiToken" class="settings-input"
+                   placeholder="Paste mc_... token" style="margin-top:4px;">
+          </details>
+        </div>
+        <!-- Shown when connected -->
+        <div id="auth-connected" style="display:none;">
+          <div style="display:flex; align-items:center; gap:8px; padding:8px 0;">
+            <span style="color:var(--green, #16a34a); font-size:16px;">&#10003;</span>
+            <span style="font-size:13px;">Connected as <strong id="auth-email"></strong></span>
+          </div>
+          <button id="btn-cloud-signout" class="btn-secondary" style="width:100%; font-size:13px;">
+            Sign out
+          </button>
+        </div>
+      </div>
+      <label class="settings-label" style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="setting-includeGroupLibraries">
+        Include group libraries
       </label>
       <button id="btn-settings-save" class="btn-primary btn-settings-save">Save Settings</button>
     </div>
@@ -138,6 +164,7 @@
       <div class="btn-row">
         <button id="btn-upload" class="btn-primary btn-action">Upload Library</button>
         <button id="btn-sync" class="btn-primary btn-action btn-secondary-action">Sync Library</button>
+        <button id="btn-sync-metadata" class="btn-primary btn-action btn-secondary-action">Sync Metadata</button>
       </div>
       <div id="upload-progress" class="progress-section" style="display:none;">
         <div class="progress-label"><span id="upload-stage">Uploading</span> <span id="upload-count"></span></div>
@@ -146,12 +173,18 @@
       <div id="sync-progress" class="progress-section" style="display:none;">
         <div class="progress-label"><span id="sync-stage">Syncing</span> <span id="sync-count"></span></div>
       </div>
+      <div id="sync-metadata-progress" class="progress-section" style="display:none;">
+        <div class="progress-label"><span id="sync-metadata-stage">Syncing metadata</span> <span id="sync-metadata-count"></span></div>
+      </div>
     </div>
     <div id="cloud-disconnected" class="info-card">
       <div class="info-card-icon">!</div>
       <div class="info-card-title">Not Connected</div>
       <div class="info-card-body">
-        <p>Enter your API token in Settings to connect to inCite Cloud.</p>
+        <p>Sign in to connect your Zotero library to inCite Cloud.</p>
+        <button id="btn-cloud-signin-main" class="btn-primary" style="margin-top:12px; width:100%;">
+          Sign in to inCite
+        </button>
       </div>
     </div>
     <div id="cloud-error" class="error-card" style="display:none;">

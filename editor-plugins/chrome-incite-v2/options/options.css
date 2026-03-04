@@ -277,3 +277,53 @@ details[open] .advanced-toggle::before {
 .advanced-content {
   padding-top: 12px;
 }
+
+/* Hotkey recorder widget */
+.hotkey-recorder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-width: 180px;
+}
+
+.hotkey-recorder:focus {
+  outline: none;
+  border-color: var(--oxblood-muted);
+  box-shadow: 0 0 0 3px var(--oxblood-faint);
+}
+
+.hotkey-recorder.recording {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--oxblood-faint);
+}
+
+.hotkey-display {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.hotkey-hint {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.hotkey-recorder.recording .hotkey-hint {
+  color: var(--accent);
+}
+
+.hotkey-recorder.recording .hotkey-hint::after {
+  content: "...";
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}

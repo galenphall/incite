@@ -12,13 +12,15 @@ export function setPref(key: string, value: string | number | boolean): void {
 	Zotero.Prefs.set(`${PREF_PREFIX}.${key}`, value, true);
 }
 
-/** Load all settings from Zotero preferences into a ClientConfig. */
-export function loadClientConfig(): ClientConfig {
+/** Load all settings from Zotero preferences into a ClientConfig & Zotero extras. */
+export function loadClientConfig(): ClientConfig & { includeGroupLibraries: boolean; connectedEmail: string } {
 	return {
 		apiMode: getPref("apiMode", ZOTERO_DEFAULTS.apiMode) as ApiMode,
 		cloudUrl: getPref("cloudUrl", ZOTERO_DEFAULTS.cloudUrl),
 		localUrl: getPref("localUrl", ZOTERO_DEFAULTS.localUrl),
 		apiToken: getPref("apiToken", ZOTERO_DEFAULTS.apiToken),
+		includeGroupLibraries: getPref("includeGroupLibraries", true),
+		connectedEmail: getPref("connectedEmail", ""),
 	};
 }
 

@@ -16,6 +16,8 @@ export interface InCiteSettings {
 	debounceMs: number;
 	showParagraphs: boolean;
 	collectionId: string | null;
+	savePaperHotkey: string;
+	defaultCitationStyle: string;
 }
 
 /** Default settings shared across all plugins. */
@@ -37,6 +39,8 @@ export const DEFAULT_SETTINGS: InCiteSettings = {
 	debounceMs: 500,
 	showParagraphs: true,
 	collectionId: null,
+	savePaperHotkey: "Alt+Shift+S",
+	defaultCitationStyle: "apa",
 };
 
 /** Get the active API URL based on the current mode. */
@@ -125,6 +129,15 @@ export interface PaperMetadata {
 		extraction_method: string;
 		source_hostname: string;
 	};
+	volume?: string;
+	issue?: string;
+	pages?: string;
+	pmid?: string;
+	pmcid?: string;
+	issn?: string;
+	publisher?: string;
+	keywords?: string[];
+	language?: string;
 }
 
 /** Request to save papers to the user's library. */

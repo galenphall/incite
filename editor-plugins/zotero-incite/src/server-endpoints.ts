@@ -4,11 +4,36 @@
  */
 import { loadClientConfig, setPref } from "./prefs";
 import { findPython, checkIncite, installIncite, getInstallState, startServer, stopManagedServer, processLibrary, getProcessStatus } from "./system-utils";
-import { uploadToCloud, getUploadState } from "./cloud-upload";
+import { uploadToCloud, getUploadState, syncMetadataToCloud, getSyncMetadataState } from "./cloud-upload";
 import { syncFromCloud, getSyncState } from "./cloud-sync";
 
 /** Panel HTML loaded at startup. */
 let panelHtml = "";
+
+// --- Auth state for plugin login flow ---
+let pendingAuthState: { nonce: string; createdAt: number } | null = null;
+
+export function startAuthFlow(cloudUrl: string): void {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	const nonce = Array.from(bytes)
+		.map(b => b.toString(16).padStart(2, "0")).join("");
+	pendingAuthState = { nonce, createdAt: Date.now() };
+
+	const callbackPort = 23119;
+	const loginUrl = `${cloudUrl.replace(/\/+$/, "")}/auth/plugin-login`
+		+ `?callback_port=${callbackPort}&state=${nonce}`;
+
+	Zotero.launchURL(loginUrl);
+}
+
+export function getAuthState(): { nonce: string; createdAt: number } | null {
+	return pendingAuthState;
+}
+
+export function clearAuthState(): void {
+	pendingAuthState = null;
+}
 
 /** JSON response helper. */
 function jsonResponse(data: unknown): [number, string, string] {
@@ -35,6 +60,12 @@ const ENDPOINT_PATHS = [
 	"/incite/cloud/sync/status",
 	"/incite/cloud/upload",
 	"/incite/cloud/upload/status",
+	"/incite/cloud/sync-metadata",
+	"/incite/cloud/sync-metadata/status",
+	"/incite/auth-callback",
+	"/incite/auth/start",
+	"/incite/auth/status",
+	"/incite/auth/sign-out",
 ] as const;
 
 /** Register all inCite HTTP endpoints on Zotero's connector server. */
@@ -83,7 +114,7 @@ export function registerServerEndpoints(): void {
 			// PUT — write settings
 			try {
 				const data = (typeof options.data === "string" ? JSON.parse(options.data) : options.data) as Record<string, unknown>;
-				const allowedKeys = ["apiMode", "cloudUrl", "localUrl", "apiToken"];
+				const allowedKeys = ["apiMode", "cloudUrl", "localUrl", "apiToken", "includeGroupLibraries"];
 				for (const key of allowedKeys) {
 					if (key in data) {
 						setPref(key, data[key] as string | number | boolean);
@@ -338,6 +369,189 @@ export function registerServerEndpoints(): void {
 		},
 	};
 	Zotero.Server.Endpoints["/incite/cloud/upload/status"] = CloudUploadStatusEndpoint;
+
+	// POST /incite/cloud/sync-metadata — sync metadata only (no PDFs/reprocessing)
+	const CloudSyncMetadataEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	CloudSyncMetadataEndpoint.prototype = {
+		supportedMethods: ["POST"],
+		supportedDataTypes: ["application/json"],
+		permitBookmarklet: true,
+		init() {
+			try {
+				const config = loadClientConfig();
+				const serverUrl = (config.cloudUrl || "").replace(/\/+$/, "");
+				const apiToken = config.apiToken || "";
+				if (!serverUrl || !apiToken) {
+					return errorResponse(400, "Missing cloud URL or API token");
+				}
+				syncMetadataToCloud(serverUrl, apiToken);
+				return jsonResponse({ status: "started" });
+			} catch (e) {
+				return errorResponse(500, String(e));
+			}
+		},
+	};
+	Zotero.Server.Endpoints["/incite/cloud/sync-metadata"] = CloudSyncMetadataEndpoint;
+
+	// GET /incite/cloud/sync-metadata/status — poll metadata sync progress
+	const CloudSyncMetadataStatusEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	CloudSyncMetadataStatusEndpoint.prototype = {
+		supportedMethods: ["GET"],
+		supportedDataTypes: ["application/json"],
+		permitBookmarklet: true,
+		init() {
+			return jsonResponse(getSyncMetadataState());
+		},
+	};
+	Zotero.Server.Endpoints["/incite/cloud/sync-metadata/status"] = CloudSyncMetadataStatusEndpoint;
+
+	// GET /incite/auth-callback — receive token from browser redirect
+	const AuthCallbackEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	AuthCallbackEndpoint.prototype = {
+		supportedMethods: ["GET"],
+		supportedDataTypes: ["*"],
+		permitBookmarklet: true,
+		init(options) {
+			const query = options.query || {};
+			const token = query.token || "";
+			const state = query.state || "";
+			const email = query.email || "";
+
+			// Validate state nonce
+			if (!pendingAuthState) {
+				return [400, "text/html",
+					"<html><body><h2>No login in progress</h2><p>Please start the sign-in flow from Zotero.</p></body></html>"];
+			}
+
+			const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+			if (Date.now() - pendingAuthState.createdAt > AUTH_TIMEOUT_MS) {
+				pendingAuthState = null;
+				return [400, "text/html",
+					"<html><body><h2>Login expired</h2><p>Please try signing in again from Zotero.</p></body></html>"];
+			}
+
+			if (state !== pendingAuthState.nonce) {
+				return [400, "text/html",
+					"<html><body><h2>Invalid state</h2><p>This login link is invalid. Please try again from Zotero.</p></body></html>"];
+			}
+
+			if (!token || !token.startsWith("mc_")) {
+				pendingAuthState = null;
+				return [400, "text/html",
+					"<html><body><h2>Missing token</h2><p>No valid token received. Please try again.</p></body></html>"];
+			}
+
+			// Success — store token and clear auth state
+			pendingAuthState = null;
+			setPref("apiToken", token);
+			setPref("apiMode", "cloud");
+			if (email) {
+				setPref("connectedEmail", email);
+			}
+
+			return [200, "text/html", `<html>
+<head><style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex;
+         justify-content: center; align-items: center; min-height: 80vh; }
+  .card { text-align: center; max-width: 400px; }
+  .check { font-size: 48px; margin-bottom: 16px; color: #16a34a; }
+  h2 { margin-bottom: 8px; }
+  p { color: #666; }
+</style></head>
+<body><div class="card">
+  <div class="check">&#10003;</div>
+  <h2>Connected to inCite</h2>
+  <p>Your Zotero plugin is now connected${email ? " as <strong>" + email + "</strong>" : ""}.</p>
+  <p style="margin-top:16px; font-size:13px; color:#999;">You can close this tab.</p>
+</div></body></html>`];
+		},
+	};
+	Zotero.Server.Endpoints["/incite/auth-callback"] = AuthCallbackEndpoint;
+
+	// POST /incite/auth/start — trigger browser open for login (called by panel)
+	const AuthStartEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	AuthStartEndpoint.prototype = {
+		supportedMethods: ["POST"],
+		supportedDataTypes: ["application/json"],
+		permitBookmarklet: true,
+		init() {
+			const config = loadClientConfig();
+			const cloudUrl = (config.cloudUrl || "https://inciteref.com").replace(/\/+$/, "");
+
+			startAuthFlow(cloudUrl);
+
+			return jsonResponse({ status: "opened", message: "Login page opened in browser" });
+		},
+	};
+	Zotero.Server.Endpoints["/incite/auth/start"] = AuthStartEndpoint;
+
+	// GET /incite/auth/status — panel polls this during auth flow
+	// When auth is pending, actively polls the cloud server for the token
+	const AuthStatusEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	AuthStatusEndpoint.prototype = {
+		supportedMethods: ["GET"],
+		supportedDataTypes: ["application/json"],
+		permitBookmarklet: true,
+		async init() {
+			const config = loadClientConfig();
+			const hasToken = !!config.apiToken;
+
+			if (!pendingAuthState) {
+				return jsonResponse({
+					status: hasToken ? "connected" : "idle",
+					email: config.connectedEmail || null,
+				});
+			}
+
+			// Auth is pending — poll the cloud server for the token
+			const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+			if (Date.now() - pendingAuthState.createdAt > AUTH_TIMEOUT_MS) {
+				pendingAuthState = null;
+				return jsonResponse({ status: "expired", email: null });
+			}
+
+			const cloudUrl = (config.cloudUrl || "https://inciteref.com").replace(/\/+$/, "");
+			try {
+				const resp = await Zotero.HTTP.request("GET",
+					`${cloudUrl}/auth/plugin-token?state=${pendingAuthState.nonce}`,
+					{ responseType: "text", timeout: 10000 },
+				);
+				if (resp.status === 200) {
+					const data = JSON.parse(resp.responseText);
+					if (data.status === "ready" && data.token) {
+						// Token received — store it
+						pendingAuthState = null;
+						setPref("apiToken", data.token);
+						setPref("apiMode", "cloud");
+						if (data.email) {
+							setPref("connectedEmail", data.email);
+						}
+						return jsonResponse({ status: "connected", email: data.email || null });
+					}
+				}
+			} catch {
+				// Cloud not reachable — still pending
+			}
+
+			return jsonResponse({ status: "pending", email: null });
+		},
+	};
+	Zotero.Server.Endpoints["/incite/auth/status"] = AuthStatusEndpoint;
+
+	// POST /incite/auth/sign-out — clear token and email
+	const AuthSignOutEndpoint = function () {} as unknown as Zotero.Server.EndpointConstructor;
+	AuthSignOutEndpoint.prototype = {
+		supportedMethods: ["POST"],
+		supportedDataTypes: ["application/json"],
+		permitBookmarklet: true,
+		init() {
+			setPref("apiToken", "");
+			setPref("connectedEmail", "");
+			clearAuthState();
+			return jsonResponse({ status: "signed_out" });
+		},
+	};
+	Zotero.Server.Endpoints["/incite/auth/sign-out"] = AuthSignOutEndpoint;
 
 	Zotero.debug("inCite: all server endpoints registered");
 }

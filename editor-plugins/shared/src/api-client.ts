@@ -209,4 +209,123 @@ export class InCiteClient {
 	async libraryRefresh(): Promise<{ status: string }> {
 		return this.authPost("/api/library/refresh", {}) as Promise<{ status: string }>;
 	}
+
+	/** Get metadata for a single paper by canonical ID. Returns null on 404. */
+	async getPaper(canonicalId: string): Promise<{
+		canonical_id: string;
+		title: string;
+		abstract: string;
+		authors: string[];
+		year: number | null;
+		doi: string;
+		journal: string;
+	} | null> {
+		try {
+			const resp = await this.authGet(`/api/v1/library/papers/${encodeURIComponent(canonicalId)}`);
+			return resp as {
+				canonical_id: string;
+				title: string;
+				abstract: string;
+				authors: string[];
+				year: number | null;
+				doi: string;
+				journal: string;
+			};
+		} catch {
+			return null; // 404 or other error
+		}
+	}
+
+	/** Get metadata for multiple papers by canonical IDs (batch). */
+	async getPapers(canonicalIds: string[]): Promise<Map<string, {
+		canonical_id: string;
+		title: string;
+		abstract: string;
+		authors: string[];
+		year: number | null;
+		doi: string;
+		journal: string;
+	}>> {
+		const result = new Map<string, {
+			canonical_id: string;
+			title: string;
+			abstract: string;
+			authors: string[];
+			year: number | null;
+			doi: string;
+			journal: string;
+		}>();
+
+		// Fetch all papers and filter client-side (one request vs N)
+		try {
+			const resp = await this.authGet("/api/v1/library/papers") as {
+				papers: Array<{
+					canonical_id: string;
+					title: string;
+					abstract: string;
+					authors: string[];
+					year: number | null;
+					doi: string;
+					journal: string;
+				}>;
+			};
+			const idSet = new Set(canonicalIds);
+			for (const paper of resp.papers) {
+				if (idSet.has(paper.canonical_id)) {
+					result.set(paper.canonical_id, paper);
+				}
+			}
+		} catch {
+			// Return empty map on error
+		}
+
+		return result;
+	}
+
+	// --- CSL citation formatting ---
+
+	/** Format a bibliography for the given paper IDs. */
+	async formatBibliography(
+		paperIds: string[],
+		style: string = "apa",
+		outputFormat: string = "html",
+	): Promise<unknown> {
+		return this.authPost("/api/csl/format", {
+			style,
+			mode: "bibliography",
+			paper_ids: paperIds,
+			output_format: outputFormat,
+		});
+	}
+
+	/** Format in-text citations with document-level state. */
+	async formatCitations(
+		paperIds: string[],
+		clusters: Array<{ citation_ids: string[]; position: number }>,
+		style: string = "apa",
+		outputFormat: string = "html",
+	): Promise<unknown> {
+		return this.authPost("/api/csl/format", {
+			style,
+			mode: "citation",
+			paper_ids: paperIds,
+			clusters,
+			output_format: outputFormat,
+		});
+	}
+
+	/** List available CSL styles. */
+	async getCSLStyles(): Promise<unknown> {
+		return this.authGet("/api/csl/styles");
+	}
+
+	/** Get metadata and preview for a specific CSL style. */
+	async getCSLStyleDetail(styleId: string): Promise<unknown> {
+		return this.authGet(`/api/csl/styles/${encodeURIComponent(styleId)}`);
+	}
+
+	/** Install a CSL style from the GitHub repository. */
+	async installCSLStyle(styleId: string): Promise<unknown> {
+		return this.authPost("/api/csl/styles/install", { style_id: styleId });
+	}
 }

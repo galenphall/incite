@@ -1,17 +1,18 @@
 # inCite for Zotero
 
-A Zotero 7 plugin that shows citation recommendations from your own library.
+A Zotero 7 plugin that connects your Zotero library to the InCite cloud service or hosts InCite locally.
 
 ## Features
 
-- **Item pane section**: Select a paper in Zotero → see related papers from your library in the right panel
-- **Text query**: Paste a writing passage via Tools → "inCite: Find Related Papers..." (or Cmd/Ctrl+Shift+I) → get recommendations
-- **Local & cloud modes**: Works with `incite serve` locally or with the cloud service at inciteref.com
+- **Cloud mode**: Sign in and upload your library to inciteref.com — no Python required
+- **Local mode**: The plugin installs InCite, indexes your library, and starts the server — you just need Python 3 and pip
+- **Library sync**: Upload papers and PDFs directly from Zotero, or sync via the Zotero cloud API
 
 ## Requirements
 
 - Zotero 7+
-- Either a local inCite server (`incite serve --embedder minilm-ft`) or a cloud account at inciteref.com
+- **Cloud mode**: An account at inciteref.com
+- **Local mode**: Python 3 and pip installed on your machine (the plugin handles the rest)
 
 ## Installation
 
@@ -46,8 +47,8 @@ The plugin uses the `@incite/shared` library for API client, types, and UI rende
 
 - `src/index.ts` — Entry point, exports lifecycle hooks
 - `src/hooks.ts` — Startup/shutdown: registers pane section, prefs, menu items
-- `src/item-pane-section.ts` — Core feature: recommendations in the Zotero item pane
-- `src/text-query-dialog.ts` — Text input modal for finding related papers
+- `src/item-pane-section.ts` — Item pane UI section
+- `src/text-query-dialog.ts` — Text query input modal
 - `src/api-client.ts` — `ZoteroTransport` wrapping `Zotero.HTTP.request()`
 - `src/prefs.ts` — Read/write Zotero preferences
 - `addon/` — Zotero 7 WebExtension manifest, bootstrap, XHTML prefs, icons

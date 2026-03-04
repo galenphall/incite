@@ -30,6 +30,24 @@ export { CitationTracker, recommendationToTracked } from "./citation-tracker";
 export type { TrackedCitation, CitationStorage } from "./citation-tracker";
 export { exportBibTeX, exportRIS, exportFormattedText, escapeLaTeX } from "./bibliography";
 
+export type {
+	CSLStyle,
+	CSLBibliographyResponse,
+	CSLCitationResponse,
+	CSLCitationCluster,
+	CitationClusterInput,
+	CSLStylesResponse,
+	CSLStyleDetailResponse,
+} from "./csl";
+export {
+	formatBibliographyCSL,
+	formatCitationCSL,
+	getAvailableStyles,
+	getStyleDetail,
+	installStyle,
+	renderStylePickerHTML,
+} from "./csl";
+
 export type { UIClassMap, RenderResultOptions } from "./ui-helpers";
 export {
 	DEFAULT_CLASS_MAP,

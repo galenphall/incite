@@ -62,10 +62,10 @@
 
 body {
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--fg);
   background: var(--bg);
-  line-height: 1.5;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -74,7 +74,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -88,15 +88,13 @@ body {
   gap: 8px;
 }
 
-.logo-wordmark { height: 28px; width: auto; }
+.logo-wordmark { height: 22px; width: auto; }
 .logo-light { display: block; }
 .logo-dark { display: none; }
 
 @media (prefers-color-scheme: dark) {
   .logo-light { display: none; }
   .logo-dark { display: block; }
-  .btn-primary, .btn-insert { color: var(--ink); }
-  .btn-insert:hover { color: var(--ink); }
 }
 
 .header-right {
@@ -148,11 +146,11 @@ body {
 
 /* Action bar */
 #action-bar {
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .btn-primary {
@@ -190,7 +188,7 @@ kbd {
 }
 
 /* Content area */
-#content { padding: 8px 12px; }
+#content { padding: 6px 10px; }
 
 .empty-state {
   text-align: center;
@@ -230,8 +228,8 @@ kbd {
 
 /* Result cards */
 .result-card {
-  padding: 10px;
-  margin-bottom: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: 0 var(--radius) var(--radius) 0;
@@ -284,9 +282,9 @@ kbd {
 .result-title {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .result-meta {
@@ -385,6 +383,20 @@ kbd {
 
 .btn-insert:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
+/* Dark mode: accent bg is cream in dark mode — force dark text on accent-bg buttons only */
+@media (prefers-color-scheme: dark) {
+  .btn-primary,
+  .btn-insert,
+  .btn-manual-submit {
+    color: var(--ink);
+  }
+  .btn-primary:hover,
+  .btn-insert:hover,
+  .btn-manual-submit:hover {
+    color: var(--ink);
+  }
+}
+
 /* Toast notifications */
 .toast {
   position: fixed;
@@ -467,13 +479,31 @@ kbd {
   width: 100%;
 }
 
+/* Results header with timing + clear */
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0 6px;
+}
+
+.btn-clear-results {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+.btn-clear-results:hover { color: var(--fg); }
+
 /* Timing info */
 .timing {
-  text-align: center;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--fg-muted);
-  padding: 4px 0 8px;
   letter-spacing: 0.02em;
 }
 
@@ -610,3 +640,12 @@ kbd {
 
 /* Hide individual insert buttons when multi-selection is active */
 .has-selection .result-card .btn-insert { display: none; }
+
+/* Google Docs-specific bibliography actions */
+.gdocs-bib-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}

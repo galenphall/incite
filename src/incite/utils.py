@@ -5,8 +5,6 @@ import re
 import unicodedata
 from collections import defaultdict
 
-import torch
-
 from incite.models import Paper, RetrievalResult
 
 # Default LLM model for all enrichment tasks
@@ -21,6 +19,11 @@ def get_best_device() -> str:
     Returns:
         Device string: "mps", "cuda", or "cpu"
     """
+    try:
+        import torch
+    except ModuleNotFoundError:
+        return "cpu"
+
     if torch.backends.mps.is_available():
         return "mps"
     elif torch.cuda.is_available():

@@ -1,7 +1,0 @@
-{
-	"name": "google-docs-incite",
-	"version": "0.1.0",
-	"description": "inCite citation recommendations for Google Docs (sidebar add-on)",
-	"keywords": ["google-docs", "citations", "academic", "writing"],
-	"license": "MIT"
-}

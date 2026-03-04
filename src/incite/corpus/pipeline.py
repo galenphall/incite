@@ -99,8 +99,8 @@ class LocalPipeline(ProcessingPipeline):
         paper: Paper,
         pdf_path: Optional[Path] = None,
     ) -> list[Chunk]:
+        from incite.corpus.chunking import chunk_paper
         from incite.corpus.pdf_extractor import extract_pdf_text
-        from incite.retrieval.factory import get_chunker
 
         path = pdf_path or (Path(paper.source_file) if paper.source_file else None)
         if path is None or not path.exists():
@@ -134,9 +134,11 @@ class LocalPipeline(ProcessingPipeline):
         paper.full_text = result.full_text
         paper.paragraphs = result.paragraphs
 
-        # Chunk the paper
-        chunker = get_chunker(self.chunking_strategy)
-        return chunker([paper], show_progress=False)
+        # Chunk the paper, passing page numbers from PDF extraction
+        return chunk_paper(
+            paper,
+            page_numbers=result.paragraph_pages or None,
+        )
 
     def process_batch(
         self,

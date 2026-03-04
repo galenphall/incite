@@ -32,12 +32,26 @@ export const pubmedTranslator: Translator = {
     const year = dateStr ? parseInt(dateStr.match(/(\d{4})/)?.[1] ?? "", 10) || undefined : undefined;
     const pdf_url = getMeta(doc, "citation_pdf_url") ?? undefined;
 
+    // Extract PMID from URL pattern /pubmed.ncbi.nlm.nih.gov/12345678/
+    let pmid = getMeta(doc, "citation_pmid") ?? undefined;
+    if (!pmid) {
+      const pmidMatch = doc.location.href.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/);
+      if (pmidMatch) pmid = pmidMatch[1];
+    }
+
     // PubMed abstract is in the page content
     let abstract: string | undefined;
     const abstractDiv = doc.querySelector("#abstract, .abstract-content");
     if (abstractDiv) {
       abstract = abstractDiv.textContent?.trim();
     }
+
+    const volume = getMeta(doc, "citation_volume") ?? undefined;
+    const issue = getMeta(doc, "citation_issue") ?? undefined;
+    const firstPage = getMeta(doc, "citation_firstpage");
+    const lastPage = getMeta(doc, "citation_lastpage");
+    const pages = firstPage ? (lastPage ? `${firstPage}-${lastPage}` : firstPage) : undefined;
+    const publisher = getMeta(doc, "citation_publisher") ?? undefined;
 
     const { full_text, structured_text } = extractStructuredText(doc);
 
@@ -52,6 +66,11 @@ export const pubmedTranslator: Translator = {
       pdf_url,
       full_text: full_text ?? undefined,
       structured_text: structured_text ?? undefined,
+      pmid,
+      volume,
+      issue,
+      pages,
+      publisher,
     };
   },
 

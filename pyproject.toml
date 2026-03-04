@@ -34,6 +34,8 @@ dependencies = [
     "rapidfuzz>=3.0.0",
     "faiss-cpu>=1.7.0",
     "rank-bm25>=0.2.2",
+    "citeproc-py>=0.6",
+    "citeproc-py-styles>=0.1",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +62,7 @@ lite = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "python-multipart>=0.0.9",
+    "pymupdf>=1.23.0",
 ]
 # Full local server (torch + API)
 api = [

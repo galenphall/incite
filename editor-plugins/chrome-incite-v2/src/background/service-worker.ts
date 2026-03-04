@@ -5,10 +5,17 @@ import type {
   EditorType,
   GetContextMessage,
   ContextResponseMessage,
+  CursorContextResponseMessage,
   PanelMessage,
 } from "../shared/types";
-import { loadSettings, saveSettings } from "../shared/settings";
+import { loadSettings, saveSettings, syncFromCloud } from "../shared/settings";
 import { isAcademicSite } from "../translators/registry";
+import { downloadAndUploadPdf, processRetryQueue } from "../shared/pdf-uploader";
+import { GoogleDocsAPI, extractDocId } from "../shared/gdocs-api";
+import type { DocsDocument } from "../shared/gdocs-api";
+import { resolveDocumentIndex, extractFullText } from "../shared/gdocs-index-resolver";
+import type { CursorContext } from "../shared/gdocs-index-resolver";
+import { GDocsCitationInserter } from "../shared/gdocs-citation-inserter";
 
 // --- Types for Save to Library ---
 
@@ -23,6 +30,15 @@ interface PaperMetadata {
   arxiv_id?: string;
   pdf_url?: string;
   full_text?: string;
+  volume?: string;
+  issue?: string;
+  pages?: string;
+  pmid?: string;
+  pmcid?: string;
+  issn?: string;
+  publisher?: string;
+  keywords?: string[];
+  language?: string;
 }
 
 interface DetectedPapersState {
@@ -33,6 +49,102 @@ interface DetectedPapersState {
 
 // Cache of detected papers per tab
 const detectedPapers = new Map<number, DetectedPapersState>();
+
+// --- Google Docs API singleton ---
+const gdocsApi = new GoogleDocsAPI();
+
+/** Cache of the last resolved cursor index per document, for citation insertion. */
+const gdocsCursorCache = new Map<string, { index: number; timestamp: number }>();
+
+// --- Hotkey injection into tabs ---
+
+/**
+ * Content function injected into pages to listen for the save-paper hotkey.
+ * Reads the hotkey from chrome.storage.sync and sends a message on match.
+ * Guarded against double-injection via a window flag.
+ */
+function injectedHotkeyListener() {
+  const FLAG = "__incite_hotkey_injected__";
+  if ((window as unknown as Record<string, boolean>)[FLAG]) return;
+  (window as unknown as Record<string, boolean>)[FLAG] = true;
+
+  const STORAGE_KEY = "incite_settings";
+  let hotkeyStr = "Alt+Shift+S";
+
+  function parseHk(s: string) {
+    const parts = s.split("+").map((p) => p.trim());
+    const r = { ctrl: false, alt: false, shift: false, meta: false, key: "" };
+    for (const part of parts) {
+      const l = part.toLowerCase();
+      if (l === "ctrl" || l === "control") r.ctrl = true;
+      else if (l === "alt") r.alt = true;
+      else if (l === "shift") r.shift = true;
+      else if (l === "meta" || l === "cmd" || l === "command") r.meta = true;
+      else r.key = l;
+    }
+    return r;
+  }
+
+  let parsed = parseHk(hotkeyStr);
+
+  // Load initial hotkey from storage
+  chrome.storage.sync.get(STORAGE_KEY, (result) => {
+    const stored = result[STORAGE_KEY];
+    if (stored?.savePaperHotkey) {
+      hotkeyStr = stored.savePaperHotkey;
+      parsed = parseHk(hotkeyStr);
+    }
+  });
+
+  // Listen for hotkey changes without re-injection
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync" && changes[STORAGE_KEY]?.newValue?.savePaperHotkey) {
+      hotkeyStr = changes[STORAGE_KEY].newValue.savePaperHotkey;
+      parsed = parseHk(hotkeyStr);
+    }
+  });
+
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (
+      event.ctrlKey === parsed.ctrl &&
+      event.altKey === parsed.alt &&
+      event.shiftKey === parsed.shift &&
+      event.metaKey === parsed.meta &&
+      event.key.toLowerCase() === parsed.key
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      chrome.runtime.sendMessage({ type: "SAVE_PAPERS_HOTKEY" });
+    }
+  }, true);
+}
+
+/** Inject the hotkey listener into a tab. */
+async function injectHotkeyListener(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: injectedHotkeyListener,
+    });
+  } catch {
+    // Injection not allowed on this page (chrome://, edge://, etc.)
+  }
+}
+
+// --- Cloud settings sync on startup ---
+
+syncFromCloud().catch(() => {});
+
+// Re-sync when apiToken changes
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && changes.incite_settings?.newValue?.apiToken) {
+    syncFromCloud().catch(() => {});
+  }
+});
+
+// --- Retry failed PDF uploads on startup ---
+
+loadSettings().then((s) => processRetryQueue(s)).catch(() => {});
 
 // --- Shared API client (created lazily from settings) ---
 
@@ -59,18 +171,12 @@ async function getClient(): Promise<InCiteClient> {
 
 // --- Side Panel lifecycle ---
 
-// Don't auto-open side panel on click — we manage this per-tab via popup vs onClicked
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+// On writing sites the popup is cleared and panel is enabled, so clicking opens the panel.
+// On other sites the popup is set, which takes precedence.
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
 // Track whether the panel is ready to receive messages
 let panelReady = false;
-
-// For writing sites (no popup set), clicking the icon opens the side panel
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab.id) {
-    await chrome.sidePanel.open({ tabId: tab.id });
-  }
-});
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "trigger-recommendations") {
@@ -128,32 +234,56 @@ async function sendHotkeyTriggerWithRetry(maxAttempts = 3, intervalMs = 200): Pr
 
 // --- Context-aware toolbar: writing sites → side panel, academic sites → popup ---
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (!tab.url) return;
-
+/** Configure side panel / popup for a tab based on its URL. */
+async function configureTabMode(tabId: number, url: string): Promise<void> {
   const isWriting =
-    tab.url.includes("docs.google.com/document") ||
-    tab.url.includes("overleaf.com/project");
-  const isAcademic = isAcademicSite(tab.url);
+    url.includes("docs.google.com/document") ||
+    url.includes("overleaf.com/project");
+  const isAcademic = isAcademicSite(url);
 
   if (isWriting) {
-    // Side panel mode (current behavior for writing contexts)
-    await chrome.sidePanel.setOptions({ tabId, enabled: true });
+    await chrome.sidePanel.setOptions({ tabId, path: "panel/panel.html", enabled: true });
     await chrome.action.setPopup({ tabId, popup: "" });
   } else if (isAcademic) {
-    // Popup mode for save-to-library on academic sites
     await chrome.sidePanel.setOptions({ tabId, enabled: false });
     await chrome.action.setPopup({ tabId, popup: "popup/popup.html" });
   } else {
-    // All other sites: popup mode for save-to-library (generic meta tag detection)
     await chrome.sidePanel.setOptions({ tabId, enabled: false });
     await chrome.action.setPopup({ tabId, popup: "popup/popup.html" });
   }
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (!tab.url) return;
+
+  // Inject the configurable hotkey listener when a page finishes loading
+  if (changeInfo.status === "complete") {
+    await injectHotkeyListener(tabId);
+  }
+
+  await configureTabMode(tabId, tab.url);
 
   // Clear cached detection when navigating away
   if (changeInfo.url) {
     detectedPapers.delete(tabId);
     await chrome.action.setBadgeText({ tabId, text: "" });
+  }
+});
+
+// Also configure when switching to an already-loaded tab (e.g. after extension refresh)
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.url) await configureTabMode(tabId, tab.url);
+  } catch {
+    // Tab may have been closed
+  }
+});
+
+// Configure all existing tabs on startup (covers extension install/refresh)
+chrome.tabs.query({}).then((tabs) => {
+  for (const tab of tabs) {
+    if (tab.id && tab.url) configureTabMode(tab.id, tab.url);
   }
 });
 
@@ -177,6 +307,7 @@ type LibraryMessage =
 type ExtendedPanelMessage =
   | PanelMessage
   | { type: "PANEL_READY" }
+  | { type: "SAVE_PAPERS_HOTKEY" }
   | { type: "GET_RECOMMENDATIONS_FOR_TEXT"; text: string }
   | LibraryMessage;
 
@@ -185,6 +316,12 @@ chrome.runtime.onMessage.addListener((message: ExtendedPanelMessage, sender, sen
     panelReady = true;
     sendResponse({ ack: true });
     return false;
+  }
+
+  // Handle SAVE_PAPERS_HOTKEY from injected keydown listener
+  if (message.type === "SAVE_PAPERS_HOTKEY") {
+    handleSavePapersHotkey().then(() => sendResponse({ ack: true })).catch(() => sendResponse({ ack: false }));
+    return true;
   }
 
   // Handle PAGE_PAPERS_DETECTED from content scripts
@@ -238,6 +375,22 @@ async function updateBadge(tabId: number, type: "single" | "multiple", papers: P
   }
 }
 
+// --- PDF upload after save (fire-and-forget) ---
+
+function firePdfUploads(
+  papers: PaperMetadata[],
+  saveResult: { saved?: Array<{ canonical_id: string; title: string }>; already_existed?: Array<{ canonical_id: string; title: string }> },
+  settings: ChromeExtensionSettings,
+): void {
+  const savedItems = saveResult.saved ?? [];
+  for (const item of savedItems) {
+    const paper = papers.find((p) => p.title?.trim() === item.title);
+    if (paper?.pdf_url) {
+      downloadAndUploadPdf(item.canonical_id, paper.pdf_url, settings).catch(() => {});
+    }
+  }
+}
+
 // --- Quick-save helpers (shared by keyboard shortcut and context menu) ---
 
 async function quickSavePapers(papers: PaperMetadata[]): Promise<boolean> {
@@ -251,12 +404,15 @@ async function quickSavePapers(papers: PaperMetadata[]): Promise<boolean> {
     const apiClient = await getClient();
     const stored = await chrome.storage.local.get("lastCollectionId");
     const collectionId = stored.lastCollectionId ?? null;
-    await apiClient.savePapers({
+    const result = await apiClient.savePapers({
       papers,
       collection_id: collectionId,
       tags: [],
       enrich: true,
     });
+
+    // Fire-and-forget PDF uploads
+    firePdfUploads(papers, result, settings);
 
     if (tabId) {
       await chrome.action.setBadgeText({ tabId, text: "\u2713" });
@@ -371,6 +527,32 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+/** Handle the custom hotkey for saving papers (same flow as save-to-library command). */
+async function handleSavePapersHotkey(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+
+  const cached = detectedPapers.get(tab.id);
+  let papers: PaperMetadata[] = [];
+
+  if (cached && cached.type === "single") {
+    papers = cached.papers;
+  } else if (!cached) {
+    const result = await handleGetDetectedPapers();
+    if (result.type === "single") {
+      papers = result.papers ?? [];
+    }
+  }
+
+  if (papers.length > 0) {
+    await quickSavePapers(papers);
+  } else {
+    await chrome.action.setBadgeText({ tabId: tab.id, text: "!" });
+    await chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: "#E74C3C" });
+    setTimeout(() => chrome.action.setBadgeText({ tabId: tab.id, text: "" }), 2000);
+  }
+}
+
 async function handleMessage(message: ExtendedPanelMessage, _sender: chrome.runtime.MessageSender) {
   switch (message.type) {
     case "GET_RECOMMENDATIONS":
@@ -401,6 +583,20 @@ async function handleMessage(message: ExtendedPanelMessage, _sender: chrome.runt
       return await handleSearchTags(message as LibraryMessage & { type: "SEARCH_TAGS" });
     case "UPDATE_LIBRARY_ITEM":
       return await handleUpdateLibraryItem(message as LibraryMessage & { type: "UPDATE_LIBRARY_ITEM" });
+
+    // --- Google Docs REST API messages ---
+    case "GDOCS_INSERT_CITATION":
+      return await handleGDocsInsertCitation(message as { type: string; paperId: string; text: string; paperUrl: string });
+    case "GDOCS_INSERT_MULTI_CITATION":
+      return await handleGDocsInsertMultiCitation(message as { type: string; fullText: string; segments: { text: string; paperUrl: string; paperId: string; offsetInFullText: number }[] });
+    case "GDOCS_INSERT_BIBLIOGRAPHY":
+      return await handleGDocsInsertBibliography(message as { type: string; entries: { paperId: string; formatted: string; url?: string }[] });
+    case "GDOCS_SCAN_CITATIONS":
+      return await handleGDocsScanCitations(message as { type: string; trackedPaperIds: string[] });
+    case "GDOCS_CLEAN":
+      return await handleGDocsClean();
+    case "GDOCS_REFRESH_CITATIONS":
+      return await handleGDocsRefreshCitations(message as { type: string; trackedPaperIds: string[]; refreshText: boolean });
 
     default:
       return { error: "Unknown message type" };
@@ -607,6 +803,27 @@ async function handleGetDetectedPapers() {
         const dateStr = getMeta(["citation_date", "citation_publication_date", "DC.Date"]);
         const year = dateStr ? parseInt(dateStr.match(/(\d{4})/)?.[1] ?? "", 10) || undefined : undefined;
         const pdf_url = getMeta(["citation_pdf_url"]) ?? undefined;
+
+        // Additional metadata fields
+        const volume = getMeta(["citation_volume", "PRISM.volume"]) ?? undefined;
+        const issue = getMeta(["citation_issue", "PRISM.number"]) ?? undefined;
+        const firstPage = getMeta(["citation_firstpage"]);
+        const lastPage = getMeta(["citation_lastpage"]);
+        const pages = firstPage ? (lastPage ? `${firstPage}-${lastPage}` : firstPage) : undefined;
+        const pmid = getMeta(["citation_pmid"]) ?? undefined;
+        const issn = getMeta(["citation_issn", "PRISM.issn", "PRISM.eIssn"]) ?? undefined;
+        const publisher = getMeta(["citation_publisher", "DC.Publisher"]) ?? undefined;
+        const language = getMeta(["citation_language", "DC.Language"]) ?? undefined;
+        let keywords: string[] | undefined;
+        const keywordStr = getMeta(["citation_keywords"]);
+        if (keywordStr) {
+          keywords = keywordStr.split(",").map((k: string) => k.trim()).filter(Boolean);
+        }
+        if (!keywords?.length) {
+          const dcSubjects = getAllMeta("DC.Subject");
+          if (dcSubjects.length) keywords = dcSubjects;
+        }
+
         const { full_text, structured_text } = inlineExtractStructured();
 
         return {
@@ -621,6 +838,14 @@ async function handleGetDetectedPapers() {
             pdf_url,
             full_text,
             structured_text,
+            volume,
+            issue,
+            pages,
+            pmid,
+            issn,
+            publisher,
+            keywords: keywords?.length ? keywords : undefined,
+            language,
           }],
           type: "single",
         };
@@ -669,6 +894,9 @@ async function handleSavePapers(message: { papers: PaperMetadata[]; collectionId
     await chrome.action.setBadgeText({ tabId: tab.id, text: "\u2713" });
     await chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: "#2ECC71" });
   }
+
+  // Fire-and-forget PDF uploads for saved papers with pdf_url
+  firePdfUploads(message.papers, result, settings);
 
   return result;
 }
@@ -800,7 +1028,24 @@ async function handleGetRecommendations(collectionId?: string | null) {
   if (!tab) return { type: "RECOMMENDATIONS_RESULT", error: "No active tab" };
 
   const settings = await loadSettings();
-  const query = await getContextFromTab(tab);
+  const editorType = detectEditorType(tab.url ?? "");
+
+  let query: string;
+  let cursorSentenceIndex: number | undefined;
+
+  if (editorType === "googledocs") {
+    // Google Docs (canvas mode): use texteventtarget copy trick to get selected text.
+    // This captures what the user selected; we use it directly as the query.
+    const cursorText = await getGDocsCursorText(tab);
+    if (!cursorText) {
+      return { type: "RECOMMENDATIONS_RESULT", error: "Select text in your document and try again." };
+    }
+    query = cursorText;
+  } else {
+    // Overleaf and others: use existing content script approach
+    query = await getContextFromTab(tab);
+  }
+
   const stripped = stripCitations(query);
 
   if (!stripped || stripped.length < 10) {
@@ -808,8 +1053,8 @@ async function handleGetRecommendations(collectionId?: string | null) {
   }
 
   const apiClient = await getClient();
-  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost, undefined, collectionId);
-  return { type: "RECOMMENDATIONS_RESULT", response };
+  const response = await apiClient.recommend(stripped, settings.k, settings.authorBoost, cursorSentenceIndex, collectionId);
+  return { type: "RECOMMENDATIONS_RESULT", response, query: stripped };
 }
 
 async function handleGetRecommendationsForText(text: string, collectionId?: string | null) {
@@ -886,4 +1131,368 @@ async function handleInsertMultiCitation(recs: Recommendation[]) {
       }
     );
   });
+}
+
+// --- Google Docs REST API handlers ---
+
+/** Get the current Google Doc ID from the active tab URL. */
+function getActiveDocId(tabUrl: string): string | null {
+  return extractDocId(tabUrl);
+}
+
+/** Get a GDocsCitationInserter for the active document. */
+function getInserter(docId: string): GDocsCitationInserter {
+  return new GDocsCitationInserter(gdocsApi, docId);
+}
+
+/**
+ * Get selected text from Google Docs via the texteventtarget copy trick.
+ * Returns the selected text directly, or null if nothing is selected.
+ */
+async function getGDocsCursorText(tab: chrome.tabs.Tab): Promise<string | null> {
+  if (!tab.id) return null;
+
+  try {
+    const response = await new Promise<CursorContextResponseMessage>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Cursor context timeout")), 8000);
+      chrome.tabs.sendMessage(
+        tab.id!,
+        { type: "GET_CURSOR_CONTEXT", requestId: crypto.randomUUID() },
+        (resp: CursorContextResponseMessage) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(resp);
+        }
+      );
+    });
+
+    if (response?.paragraphText && response.paragraphText.trim().length > 0) {
+      return response.paragraphText.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get cursor context from the Google Docs content script via texteventtarget probing,
+ * then resolve it to a document index using the REST API.
+ */
+async function getGDocsCursorIndex(tab: chrome.tabs.Tab): Promise<{ index: number; fullText: string } | null> {
+  const docId = getActiveDocId(tab.url ?? "");
+  if (!docId || !tab.id) return null;
+
+  // Ask content script for cursor context
+  const cursorContext = await new Promise<CursorContext | null>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Cursor context timeout")), 8000);
+    const requestId = crypto.randomUUID();
+
+    chrome.tabs.sendMessage(
+      tab.id!,
+      { type: "GET_CURSOR_CONTEXT", requestId },
+      (response: CursorContextResponseMessage) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (response?.error || !response?.paragraphText) {
+          resolve(null);
+          return;
+        }
+        resolve({
+          paragraphText: response.paragraphText,
+          cursorOffset: response.cursorOffset ?? 0,
+          textBefore: response.textBefore,
+          textAfter: response.textAfter,
+        });
+      }
+    );
+  });
+
+  // Fetch document via REST API
+  const doc = await gdocsApi.getDocument(docId);
+  const fullText = extractFullText(doc);
+
+  if (cursorContext) {
+    // Resolve cursor context to document index
+    const resolved = resolveDocumentIndex(doc, cursorContext);
+    if (resolved) {
+      gdocsCursorCache.set(docId, { index: resolved.index, timestamp: Date.now() });
+      return { index: resolved.index, fullText };
+    }
+  }
+
+  // Cursor probing failed — return null so caller falls back to content script
+  return null;
+}
+
+/**
+ * Insert a placeholder at the cursor via the content script, then find it
+ * in the document via REST API and return its character index.
+ *
+ * This is the Zotero approach: the browser-side content script inserts a
+ * placeholder at the live cursor (which the REST API can't access), then
+ * we find it in the document structure and replace it with the real content.
+ */
+async function insertPlaceholderAndLocate(
+  tab: chrome.tabs.Tab,
+  docId: string
+): Promise<{ index: number; placeholder: string; replacedText: string }> {
+  const placeholder = `⟦INCITE-${crypto.randomUUID().slice(0, 8)}⟧`;
+
+  // Step 0: Capture the currently selected text before the paste replaces it
+  const selectedText = await getGDocsCursorText(tab) ?? "";
+
+  // Step 1: Ask content script to paste the placeholder at the cursor
+  // (This will replace the selected text with the placeholder)
+  const result = await new Promise<{ success: boolean }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Placeholder insertion timeout")), 5000);
+    chrome.tabs.sendMessage(
+      tab.id!,
+      { type: "INSERT_PLACEHOLDER", placeholder },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(response ?? { success: false });
+      }
+    );
+  });
+
+  if (!result.success) {
+    throw new Error("Content script could not insert placeholder at cursor");
+  }
+
+  // Step 2: Fetch the document and find the placeholder
+  const doc = await gdocsApi.getDocument(docId);
+  const fullText = extractFullText(doc);
+  const placeholderPos = fullText.indexOf(placeholder);
+
+  if (placeholderPos === -1) {
+    throw new Error("Placeholder not found in document — paste may not have worked");
+  }
+
+  // Convert text position to document index by scanning structural elements
+  const docIndex = textOffsetToDocIndex(doc, placeholderPos);
+
+  // Step 3: Delete the placeholder and restore the original selected text
+  const requests: import("../shared/gdocs-api").DocsRequest[] = [
+    { deleteContentRange: { range: { startIndex: docIndex, endIndex: docIndex + placeholder.length } } },
+  ];
+  if (selectedText) {
+    // Re-insert the text that the paste replaced
+    requests.push({ insertText: { location: { index: docIndex }, text: selectedText } });
+  }
+  await gdocsApi.batchUpdate(docId, requests);
+
+  // The insertion point is after the restored text
+  const insertAt = docIndex + selectedText.length;
+  return { index: insertAt, placeholder, replacedText: selectedText };
+}
+
+/**
+ * Convert a character offset in the concatenated plain text to a Google Docs
+ * document index (the index used in batchUpdate requests).
+ */
+function textOffsetToDocIndex(doc: DocsDocument, textOffset: number): number {
+  let charsSeen = 0;
+  for (const element of doc.body.content) {
+    if (!element.paragraph) continue;
+    for (const pe of element.paragraph.elements) {
+      if (!pe.textRun?.content) continue;
+      const len = pe.textRun.content.length;
+      if (charsSeen + len > textOffset) {
+        return pe.startIndex + (textOffset - charsSeen);
+      }
+      charsSeen += len;
+    }
+  }
+  // Fallback: end of document body
+  const lastElement = doc.body.content[doc.body.content.length - 1];
+  return lastElement?.endIndex ?? 1;
+}
+
+async function handleGDocsInsertCitation(message: { paperId: string; text: string; paperUrl: string }) {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    // Zotero-style: insert placeholder at cursor, find it via REST API, replace with citation
+    const { index: insertIndex } = await insertPlaceholderAndLocate(tab, docId);
+
+    const inserter = getInserter(docId);
+    const { endIndex } = await inserter.insertCitation(insertIndex, message.text, message.paperUrl, message.paperId);
+
+    // Cache position for subsequent insertions
+    gdocsCursorCache.set(docId, { index: endIndex, timestamp: Date.now() });
+
+    return { type: "GDOCS_RESULT", success: true };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
+}
+
+async function handleGDocsInsertMultiCitation(message: { fullText: string; segments: { text: string; paperUrl: string; paperId: string; offsetInFullText: number }[] }) {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    // Zotero-style: insert placeholder at cursor, find it via REST API, replace with citation
+    const { index: insertIndex } = await insertPlaceholderAndLocate(tab, docId);
+
+    const inserter = getInserter(docId);
+    const { endIndex } = await inserter.insertGroupedCitation(insertIndex, message.fullText, message.segments);
+
+    gdocsCursorCache.set(docId, { index: endIndex, timestamp: Date.now() });
+
+    return { type: "GDOCS_RESULT", success: true };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
+}
+
+async function handleGDocsInsertBibliography(message: { entries: { paperId: string; formatted: string; url?: string }[] }) {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    const inserter = getInserter(docId);
+    await inserter.insertBibliography(message.entries);
+    return { type: "GDOCS_RESULT", success: true };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
+}
+
+async function handleGDocsScanCitations(message: { trackedPaperIds: string[] }) {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    const inserter = getInserter(docId);
+    const data = await inserter.scanCitations(message.trackedPaperIds);
+    return { type: "GDOCS_RESULT", success: true, data };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
+}
+
+async function handleGDocsClean() {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    const inserter = getInserter(docId);
+    const data = await inserter.cleanInciteData();
+    return { type: "GDOCS_RESULT", success: true, data };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
+}
+
+async function handleGDocsRefreshCitations(message: { trackedPaperIds: string[]; refreshText: boolean }) {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.url) return { type: "GDOCS_RESULT", success: false, error: "No active tab" };
+
+    const docId = getActiveDocId(tab.url);
+    if (!docId) return { type: "GDOCS_RESULT", success: false, error: "Not a Google Doc" };
+
+    const inserter = getInserter(docId);
+    const trackedIds = message.trackedPaperIds ?? [];
+
+    // Step 1: Enhanced scan with tracker IDs for reconciliation
+    const scan = await inserter.scanCitationsEnhanced(trackedIds);
+    const foundPaperIds = Array.from(scan.instances.keys());
+
+    // Step 2: Fix copy-paste duplicates
+    let duplicatesFixed = 0;
+    if (scan.duplicateRanges.length > 0) {
+      duplicatesFixed = await inserter.fixDuplicateRanges(scan.duplicateRanges);
+    }
+
+    // Step 3: Fetch metadata for all found papers (needed for both reconciliation and reformat)
+    let paperMetadata: Array<{
+      canonical_id: string;
+      title: string;
+      abstract: string;
+      authors: string[];
+      year: number | null;
+      doi: string;
+      journal: string;
+    }> = [];
+    let citationsRefreshed = 0;
+
+    if (foundPaperIds.length > 0) {
+      const settings = await loadSettings();
+      const client = new InCiteClient({
+        apiMode: settings.apiMode,
+        cloudUrl: settings.cloudUrl,
+        localUrl: settings.localUrl,
+        apiToken: settings.apiToken ?? "",
+      });
+      const papers = await client.getPapers(foundPaperIds);
+      paperMetadata = Array.from(papers.values());
+
+      // Step 4: Refresh citation text if requested
+      if (message.refreshText) {
+        const result = await inserter.reformatCitations((paperId: string) => {
+          const paper = papers.get(paperId);
+          if (!paper) return null;
+          const authors = paper.authors ?? [];
+          let authorStr: string;
+          if (authors.length === 0) authorStr = "Unknown";
+          else if (authors.length === 1) authorStr = authors[0];
+          else if (authors.length === 2) authorStr = `${authors[0]} & ${authors[1]}`;
+          else authorStr = `${authors[0]} et al.`;
+          const yearStr = paper.year ? String(paper.year) : "n.d.";
+          return `(${authorStr}, ${yearStr})`;
+        });
+        citationsRefreshed = result.updated;
+      }
+    }
+
+    return {
+      type: "GDOCS_RESULT",
+      success: true,
+      data: {
+        foundPaperIds,
+        orphanedPaperIds: scan.orphaned,
+        untrackedPaperIds: scan.untracked,
+        paperMetadata,
+        duplicatesFixed,
+        citationsRefreshed,
+      },
+    };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { type: "GDOCS_RESULT", success: false, error: errMsg };
+  }
 }

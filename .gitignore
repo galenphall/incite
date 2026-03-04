@@ -111,3 +111,6 @@ editor-plugins/chrome-incite-v2/html/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Worktrees
+.worktrees/

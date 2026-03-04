@@ -15,6 +15,8 @@ interface PanelSettings {
 	localUrl: string;
 	cloudUrl: string;
 	apiToken: string;
+	includeGroupLibraries: boolean;
+	connectedEmail: string;
 }
 
 const DEFAULT_SETTINGS: PanelSettings = {
@@ -22,6 +24,8 @@ const DEFAULT_SETTINGS: PanelSettings = {
 	localUrl: "http://127.0.0.1:8230",
 	cloudUrl: "https://inciteref.com",
 	apiToken: "",
+	includeGroupLibraries: true,
+	connectedEmail: "",
 };
 
 let settings: PanelSettings = { ...DEFAULT_SETTINGS };
@@ -87,6 +91,7 @@ const cloudError = document.getElementById("cloud-error")!;
 const cloudErrorMessage = document.getElementById("cloud-error-message")!;
 
 const btnSync = document.getElementById("btn-sync") as HTMLButtonElement;
+const btnSyncMetadata = document.getElementById("btn-sync-metadata") as HTMLButtonElement;
 const btnUpload = document.getElementById("btn-upload") as HTMLButtonElement;
 const btnInstallIncite = document.getElementById("btn-install-incite") as HTMLButtonElement;
 const btnStartServer = document.getElementById("btn-start-server") as HTMLButtonElement;
@@ -123,6 +128,12 @@ btnUpload?.addEventListener("click", () => uploadLibrary());
 
 
 btnSync.addEventListener("click", () => syncLibrary());
+btnSyncMetadata.addEventListener("click", () => syncMetadata());
+
+// Sign-in buttons (settings panel + main disconnected card)
+document.getElementById("btn-cloud-signin")!.addEventListener("click", startSignIn);
+document.getElementById("btn-cloud-signin-main")!.addEventListener("click", startSignIn);
+document.getElementById("btn-cloud-signout")!.addEventListener("click", signOut);
 
 // --- System management (local mode) ---
 
@@ -486,10 +497,166 @@ async function syncLibrary(): Promise<void> {
 	}
 }
 
+async function syncMetadata(): Promise<void> {
+	const progressDiv = document.getElementById("sync-metadata-progress")!;
+	const stageText = document.getElementById("sync-metadata-stage")!;
+	const countText = document.getElementById("sync-metadata-count")!;
+
+	btnSyncMetadata.disabled = true;
+	btnSyncMetadata.textContent = "Syncing...";
+	progressDiv.style.display = "block";
+	stageText.textContent = "Starting metadata sync...";
+	countText.textContent = "";
+
+	try {
+		const resp = await fetch(CONNECTOR + "/incite/cloud/sync-metadata", { method: "POST" });
+		if (!resp.ok) {
+			throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+		}
+
+		let pollCount = 0;
+		const poll = async () => {
+			pollCount++;
+			try {
+				const statusResp = await fetch(CONNECTOR + "/incite/cloud/sync-metadata/status");
+				const state = await statusResp.json() as {
+					status: string; message: string;
+					updated?: number; skipped?: number;
+				};
+
+				if (state.status === "done") {
+					progressDiv.style.display = "none";
+					showToast(state.message || "Metadata sync complete");
+					btnSyncMetadata.disabled = false;
+					btnSyncMetadata.textContent = "Sync Metadata";
+					return;
+				}
+
+				if (state.status === "error") {
+					stageText.textContent = "Sync failed";
+					countText.textContent = "";
+					showToast("Metadata sync failed: " + state.message);
+					btnSyncMetadata.disabled = false;
+					btnSyncMetadata.textContent = "Sync Metadata";
+					return;
+				}
+
+				stageText.textContent = state.message || capitalize(state.status);
+				setTimeout(poll, 2000);
+			} catch {
+				if (pollCount < 60) {
+					setTimeout(poll, 3000);
+				} else {
+					stageText.textContent = "Sync status unknown";
+					btnSyncMetadata.disabled = false;
+					btnSyncMetadata.textContent = "Sync Metadata";
+				}
+			}
+		};
+		setTimeout(poll, 2000);
+	} catch (err) {
+		showToast("Failed to start metadata sync: " + (err instanceof Error ? err.message : String(err)));
+		btnSyncMetadata.disabled = false;
+		btnSyncMetadata.textContent = "Sync Metadata";
+		progressDiv.style.display = "none";
+	}
+}
+
+// --- Auth flow ---
+
+let authPollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function startSignIn(): Promise<void> {
+	try {
+		const resp = await fetch(CONNECTOR + "/incite/auth/start", { method: "POST" });
+		if (!resp.ok) {
+			showToast("Failed to open login page");
+			return;
+		}
+		// Show pending state
+		document.getElementById("auth-pending")!.style.display = "block";
+		document.getElementById("btn-cloud-signin")!.setAttribute("disabled", "true");
+
+		// Poll for completion (guard prevents duplicate handling from overlapping async callbacks)
+		let authHandled = false;
+		authPollTimer = setInterval(async () => {
+			if (authHandled) return;
+			try {
+				const statusResp = await fetch(CONNECTOR + "/incite/auth/status");
+				if (!statusResp.ok) return;
+				const data = await statusResp.json();
+				if (data.status === "connected") {
+					authHandled = true;
+					stopAuthPoll();
+					await loadSettings();
+					populateSettingsUI();
+					updateAuthUI();
+					switchView();
+					startPolling();
+					showToast("Connected to inCite!");
+				}
+			} catch { /* ignore poll errors */ }
+		}, 1500);
+
+		// Stop polling after 5 minutes
+		setTimeout(() => {
+			if (authPollTimer) {
+				stopAuthPoll();
+				showToast("Login timed out. Please try again.");
+			}
+		}, 5 * 60 * 1000);
+	} catch {
+		showToast("Failed to start sign-in");
+	}
+}
+
+function stopAuthPoll(): void {
+	if (authPollTimer) {
+		clearInterval(authPollTimer);
+		authPollTimer = null;
+	}
+	const pending = document.getElementById("auth-pending");
+	const btn = document.getElementById("btn-cloud-signin");
+	if (pending) pending.style.display = "none";
+	if (btn) btn.removeAttribute("disabled");
+}
+
+async function signOut(): Promise<void> {
+	try {
+		await fetch(CONNECTOR + "/incite/auth/sign-out", { method: "POST" });
+		await loadSettings();
+		populateSettingsUI();
+		updateAuthUI();
+		switchView();
+		startPolling();
+		showToast("Signed out");
+	} catch {
+		showToast("Failed to sign out");
+	}
+}
+
+function updateAuthUI(): void {
+	const hasToken = !!settings.apiToken;
+	const email = settings.connectedEmail || "";
+	const disconnectedEl = document.getElementById("auth-disconnected")!;
+	const connectedEl = document.getElementById("auth-connected")!;
+	const emailEl = document.getElementById("auth-email")!;
+
+	if (hasToken) {
+		disconnectedEl.style.display = "none";
+		connectedEl.style.display = "block";
+		emailEl.textContent = email || "(unknown account)";
+	} else {
+		disconnectedEl.style.display = "block";
+		connectedEl.style.display = "none";
+	}
+}
+
 // --- Initialize ---
 
 loadSettings().then(() => {
 	populateSettingsUI();
+	updateAuthUI();
 	switchView();
 	startPolling();
 	if (settings.apiMode === "local") {
@@ -736,6 +903,7 @@ function populateSettingsUI(): void {
 	(document.getElementById("setting-localUrl") as HTMLInputElement).value = settings.localUrl;
 	(document.getElementById("setting-cloudUrl") as HTMLInputElement).value = settings.cloudUrl;
 	(document.getElementById("setting-apiToken") as HTMLInputElement).value = settings.apiToken;
+	(document.getElementById("setting-includeGroupLibraries") as HTMLInputElement).checked = settings.includeGroupLibraries;
 	updateSettingsVisibility();
 }
 
@@ -743,7 +911,12 @@ function readSettingsFromUI(): void {
 	settings.apiMode = (document.getElementById("setting-apiMode") as HTMLSelectElement).value;
 	settings.localUrl = (document.getElementById("setting-localUrl") as HTMLInputElement).value;
 	settings.cloudUrl = (document.getElementById("setting-cloudUrl") as HTMLInputElement).value;
-	settings.apiToken = (document.getElementById("setting-apiToken") as HTMLInputElement).value;
+	// Only update token if user typed something manually (don't clear browser-login token)
+	const manualToken = (document.getElementById("setting-apiToken") as HTMLInputElement)?.value;
+	if (manualToken) {
+		settings.apiToken = manualToken;
+	}
+	settings.includeGroupLibraries = (document.getElementById("setting-includeGroupLibraries") as HTMLInputElement).checked;
 }
 
 function updateSettingsVisibility(): void {
@@ -751,7 +924,8 @@ function updateSettingsVisibility(): void {
 	const isCloud = mode === "cloud";
 	document.getElementById("label-localUrl")!.style.display = isCloud ? "none" : "flex";
 	document.getElementById("label-cloudUrl")!.style.display = isCloud ? "flex" : "none";
-	document.getElementById("label-apiToken")!.style.display = isCloud ? "flex" : "none";
+	document.getElementById("label-apiToken")!.style.display = isCloud ? "block" : "none";
+	updateAuthUI();
 }
 
 // --- Toast ---

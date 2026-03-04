@@ -8,5 +8,7 @@ incite-prefs-cloud-url =
     .value = Cloud Server URL:
 incite-prefs-api-token =
     .value = API Token:
+incite-prefs-include-group-libraries =
+    .label = Include group libraries
 incite-tools-menu-label =
     .label = inCite Control Center
