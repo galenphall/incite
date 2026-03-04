@@ -41,9 +41,7 @@ class TestHighlightSentence:
 class TestParagraphRetriever:
     @pytest.fixture(scope="class")
     def para_retriever(self, mock_embedder, sample_chunks):
-        return ParagraphRetriever.from_chunks(
-            sample_chunks, mock_embedder, show_progress=False
-        )
+        return ParagraphRetriever.from_chunks(sample_chunks, mock_embedder, show_progress=False)
 
     def test_retrieve_returns_results(self, para_retriever):
         results = para_retriever.retrieve("sea level rise", k=5)
@@ -82,9 +80,7 @@ class TestParagraphRetriever:
             assert r.confidence >= 0.0
 
     def test_return_timing(self, para_retriever):
-        results, timing = para_retriever.retrieve(
-            "sea level", k=3, return_timing=True
-        )
+        results, timing = para_retriever.retrieve("sea level", k=3, return_timing=True)
         assert isinstance(results, list)
         assert isinstance(timing, dict)
         assert "embed_query_ms" in timing

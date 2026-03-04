@@ -1,7 +1,5 @@
 """Tests for deduplication and confidence scoring utilities."""
 
-import math
-
 import pytest
 
 from incite.models import Paper, RetrievalResult
