@@ -64,3 +64,16 @@ def preprocess_html_text(
                 sections.append(None)
 
     return paragraphs, sections
+
+
+def _is_likely_paywalled(full_text: str, abstract: str) -> bool:
+    """Detect if HTML extraction only captured abstract/preview."""
+    if len(full_text) < 1000:
+        return True
+    if abstract and len(abstract) > 100:
+        abstract_words = set(abstract.split())
+        text_words = set(full_text.split())
+        overlap = len(abstract_words & text_words) / max(len(abstract_words), 1)
+        if overlap > 0.8 and len(full_text) < len(abstract) * 2:
+            return True
+    return False

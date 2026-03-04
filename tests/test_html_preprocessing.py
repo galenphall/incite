@@ -113,18 +113,18 @@ class TestPaywallDetection:
     """Tests for _is_likely_paywalled."""
 
     def test_short_text_is_paywalled(self):
-        from cloud.library_api import _is_likely_paywalled
+        from incite.corpus.html_preprocessing import _is_likely_paywalled
 
         assert _is_likely_paywalled("Short text under 1000 chars.", "An abstract.")
 
     def test_long_text_not_paywalled(self):
-        from cloud.library_api import _is_likely_paywalled
+        from incite.corpus.html_preprocessing import _is_likely_paywalled
 
         full_text = "A " * 600  # ~1200 chars
         assert not _is_likely_paywalled(full_text, "Different abstract text.")
 
     def test_abstract_overlap_detected(self):
-        from cloud.library_api import _is_likely_paywalled
+        from incite.corpus.html_preprocessing import _is_likely_paywalled
 
         abstract = " ".join(f"word{i}" for i in range(200))
         # full_text is just the abstract with minor padding
