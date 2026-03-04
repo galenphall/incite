@@ -19,9 +19,8 @@
       "description": "Save paper to library"
     }
   },
-  "action": {
-    "default_popup": "popup/popup.html"
-  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz7uYERPkoIV79uirafXttnr/6BTo0cRHWYRMxuGzsBeELtr4TbrmkrsVaoWb7Gl6fS8ImbRIjEPChbht1Bw0m0IHlBxSJFXdbKM8sny/ZjxLjtLHYwECFYu7zuwL2K4i60hMIxYk/rxwGCyo/egoW0b97ZnD6rxE5tvQEj50ZXevmub6ihlWYv9CryIOqo2URZcWlGh5d3CP4agjPecXP3dL1uhRlL90Yt77ufkQHaRDg/Jp+XcsIwc5i4QW7+bUUNFky64e8FLpe8pbhN9jCjCboBKCN2WfSJoEzbvt3habIoURC9aQxY+jQYhl8qXDaacqJxBgEGj1hl0JSZ8IYQIDAQAB",
+  "action": {},
   "background": {
     "service_worker": "dist/service-worker.js"
   },
@@ -61,11 +60,17 @@
     }
   ],
   "options_page": "options/options.html",
-  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "clipboardWrite", "clipboardRead", "scripting", "contextMenus"],
+  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "clipboardWrite", "clipboardRead", "scripting", "contextMenus", "identity"],
+  "oauth2": {
+    "client_id": "517417352157-072l58api03hsfumeostd4tok12b4e2a.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/documents"]
+  },
   "host_permissions": [
+    "<all_urls>",
     "http://localhost:8230/*",
     "https://inciteref.com/*",
-    "https://api.semanticscholar.org/*"
+    "https://api.semanticscholar.org/*",
+    "https://docs.googleapis.com/*"
   ],
   "icons": {
     "16": "icons/icon16.png",

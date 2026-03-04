@@ -30,6 +30,7 @@ def chunk_paper(
     min_chunk_length: int = 150,
     source: str | None = None,
     pre_structured: tuple[list[str], list[str | None]] | None = None,
+    page_numbers: list[int | None] | None = None,
 ) -> list[Chunk]:
     """Split a paper into chunks for paragraph-level retrieval.
 
@@ -46,6 +47,8 @@ def chunk_paper(
         source: Extraction method label (e.g. "html", "grobid", "abstract")
         pre_structured: Pre-processed (paragraphs, section_headings) from HTML extraction.
             When provided, skips heading detection and paragraph splitting.
+        page_numbers: Optional list of 1-indexed page numbers parallel to paragraphs.
+            When splitting long paragraphs, sub-chunks inherit the parent's page number.
 
     Returns:
         List of Chunk objects
@@ -83,6 +86,9 @@ def chunk_paper(
         para = para.strip()
         if not para:
             continue
+
+        # Look up page number for this paragraph
+        page_num = page_numbers[i] if page_numbers and i < len(page_numbers) else None
 
         # Update section from pre_structured data
         if pre_sections is not None and i < len(pre_sections):
@@ -159,6 +165,7 @@ def chunk_paper(
                         char_offset=char_offset,
                         source=source,
                         context_text=metadata_prefix,
+                        page_number=page_num,
                     )
                 )
                 char_offset += len(sub_text)
@@ -173,6 +180,7 @@ def chunk_paper(
                     char_offset=char_offset,
                     source=source,
                     context_text=metadata_prefix,
+                    page_number=page_num,
                 )
             )
 

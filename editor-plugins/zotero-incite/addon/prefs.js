@@ -6,3 +6,4 @@ pref("extensions.incite.apiToken", "");
 pref("extensions.incite.k", 10);
 pref("extensions.incite.authorBoost", 1.0);
 pref("extensions.incite.showParagraphs", true);
+pref("extensions.incite.includeGroupLibraries", true);

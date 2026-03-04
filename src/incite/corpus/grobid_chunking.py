@@ -115,6 +115,7 @@ def _grobid_result_to_chunks(
                     section="Abstract",
                     char_offset=char_offset,
                     context_text=metadata_prefix,
+                    page_number=1,
                 )
             )
         char_offset += len(result.abstract) + 2
@@ -125,9 +126,12 @@ def _grobid_result_to_chunks(
 
         # Split section text into paragraphs
         paragraphs = section.text.split("\n\n")
+        # paragraph_pages aligns with the original unsplit paragraphs
+        section_pages = section.paragraph_pages
 
-        for para in paragraphs:
+        for para_idx, para in enumerate(paragraphs):
             para = para.strip()
+            page_num = section_pages[para_idx] if para_idx < len(section_pages) else None
 
             # Skip short chunks
             if len(para) < min_chunk_length:
@@ -152,6 +156,7 @@ def _grobid_result_to_chunks(
                             section=section_heading,
                             char_offset=char_offset,
                             context_text=metadata_prefix,
+                            page_number=page_num,
                         )
                     )
                     char_offset += len(sub_text)
@@ -165,6 +170,7 @@ def _grobid_result_to_chunks(
                         section=section_heading,
                         char_offset=char_offset,
                         context_text=metadata_prefix,
+                        page_number=page_num,
                     )
                 )
 

@@ -1,6 +1,7 @@
 """Core data models for inCite."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -660,7 +661,7 @@ class EvaluationResult:
 
 
 def _bootstrap_ci(
-    scores: "Sequence[float]",
+    scores: Sequence[float],
     n_bootstrap: int = 10000,
     confidence: float = 0.95,
     seed: int = 42,

@@ -31,7 +31,8 @@ class GROBIDSection:
 
     heading: Optional[str]
     text: str
-    section_type: Optional[str] = None  # e.g., "abstract", "introduction", "methods"
+    section_type: Optional[str] = None
+    paragraph_pages: list[int | None] = field(default_factory=list)
 
 
 @dataclass
@@ -92,6 +93,24 @@ class GROBIDResult:
                 if para:
                     paragraphs.append(para)
         return paragraphs
+
+
+
+def _extract_page_number(p_elem: ET.Element) -> int | None:
+    """Extract 1-indexed page number from a GROBID <p> element's @coords attribute.
+
+    GROBID coords format: "page,x,y,w,h;page,x,y,w,h;..." where page is 1-indexed.
+    Returns the page number from the first coordinate, or None if unavailable.
+    """
+    coords = p_elem.get("coords")
+    if not coords:
+        return None
+    try:
+        first_coord = coords.split(";")[0]
+        page_str = first_coord.split(",")[0]
+        return int(page_str)
+    except (ValueError, IndexError):
+        return None
 
 
 class GROBIDClient:
@@ -264,12 +283,14 @@ class GROBIDClient:
             # Get section type from @type attribute if present
             section_type = div.get("type")
 
-            # Get section text (all paragraphs)
+            # Get section text (all paragraphs) with page numbers
             paragraphs = []
+            paragraph_pages: list[int | None] = []
             for p in div.findall("tei:p", TEI_NS):
                 p_text = self._get_all_text(p)
                 if p_text:
                     paragraphs.append(self._clean_text(p_text))
+                    paragraph_pages.append(_extract_page_number(p))
 
             if paragraphs:
                 sections.append(
@@ -277,6 +298,7 @@ class GROBIDClient:
                         heading=heading,
                         text="\n\n".join(paragraphs),
                         section_type=section_type,
+                        paragraph_pages=paragraph_pages,
                     )
                 )
 

@@ -6,7 +6,7 @@ and detecting section headings via font size analysis.
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +21,7 @@ class PDFExtractionResult:
     paragraphs: list[str]
     section_headings: list[str]
     num_pages: int
+    paragraph_pages: list[int | None] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -111,7 +112,8 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
                     block_bottom = bbox[3]
                     in_edge = block_top < edge_zone or block_bottom > (page_height - edge_zone)
 
-                    blocks.append((text, avg_font_size, in_edge))
+                    page_num = page.number + 1  # 1-indexed
+                    blocks.append((text, avg_font_size, in_edge, page_num))
                     font_sizes.extend(block_font_sizes)
 
                     # Track edge text for repeat detection
@@ -149,9 +151,11 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
         # Identify section headings (significantly larger font, short text)
         heading_threshold = body_size * 1.15  # 15% larger than body
         paragraphs = []
+        paragraph_pages: list[int | None] = []
         current_paragraph = []
+        current_paragraph_page: int | None = None
 
-        for text, font_size, in_edge in blocks:
+        for text, font_size, in_edge, page_num in blocks:
             # Clean the text
             text = _clean_text(text)
             if not text:
@@ -177,10 +181,13 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
                     para_text = " ".join(current_paragraph)
                     if para_text.strip():
                         paragraphs.append(para_text.strip())
+                        paragraph_pages.append(current_paragraph_page)
                     current_paragraph = []
+                    current_paragraph_page = None
 
                 section_headings.append(text)
                 paragraphs.append(text)  # Include headings in paragraph list
+                paragraph_pages.append(page_num)
             else:
                 # Check if this starts a new paragraph
                 if _starts_new_paragraph(text, current_paragraph):
@@ -188,18 +195,28 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
                         para_text = " ".join(current_paragraph)
                         if para_text.strip():
                             paragraphs.append(para_text.strip())
+                            paragraph_pages.append(current_paragraph_page)
                     current_paragraph = [text]
+                    current_paragraph_page = page_num
                 else:
                     current_paragraph.append(text)
+                    if current_paragraph_page is None:
+                        current_paragraph_page = page_num
 
         # Don't forget the last paragraph
         if current_paragraph:
             para_text = " ".join(current_paragraph)
             if para_text.strip():
                 paragraphs.append(para_text.strip())
+                paragraph_pages.append(current_paragraph_page)
 
         # Filter front matter (affiliations, emails before first body section)
-        paragraphs = _filter_front_matter(paragraphs, section_headings)
+        # Apply the same filter to paragraph_pages in parallel
+        filtered_paras, filtered_pages = _filter_front_matter_with_pages(
+            paragraphs, paragraph_pages, section_headings
+        )
+        paragraphs = filtered_paras
+        paragraph_pages = filtered_pages
 
         # Build full text
         full_text = "\n\n".join(paragraphs)
@@ -209,6 +226,7 @@ def extract_pdf_text(pdf_path: Path | str) -> PDFExtractionResult:
             paragraphs=paragraphs,
             section_headings=section_headings,
             num_pages=num_pages,
+            paragraph_pages=paragraph_pages,
         )
 
     except Exception as e:
@@ -327,6 +345,35 @@ def _filter_front_matter(paragraphs: list[str], section_headings: list[str]) -> 
         filtered.append(para)
 
     return filtered
+
+
+def _filter_front_matter_with_pages(
+    paragraphs: list[str],
+    paragraph_pages: list[int | None],
+    section_headings: list[str],
+) -> tuple[list[str], list[int | None]]:
+    """Remove front matter paragraphs, keeping paragraph_pages in sync."""
+    if not paragraphs:
+        return paragraphs, paragraph_pages
+
+    # Find where body content starts (first section heading)
+    body_start = 0
+    for i, para in enumerate(paragraphs):
+        if para in section_headings or _looks_like_heading(para):
+            body_start = i
+            break
+    else:
+        return paragraphs, paragraph_pages
+
+    filtered_paras = []
+    filtered_pages = []
+    for i, para in enumerate(paragraphs):
+        if i < body_start and _is_front_matter(para):
+            continue
+        filtered_paras.append(para)
+        filtered_pages.append(paragraph_pages[i] if i < len(paragraph_pages) else None)
+
+    return filtered_paras, filtered_pages
 
 
 def _starts_new_paragraph(text: str, current_paragraph: list[str]) -> bool:

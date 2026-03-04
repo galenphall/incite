@@ -252,6 +252,28 @@ export const genericTranslator: Translator = {
     const year = parseYear(getMeta(doc, ["citation_date", "citation_publication_date", "DC.Date"]));
     const pdf_url = getMeta(doc, ["citation_pdf_url"]) ?? undefined;
 
+    // Additional metadata fields from standard meta tags
+    const volume = getMeta(doc, ["citation_volume", "PRISM.volume"]) ?? undefined;
+    const issue = getMeta(doc, ["citation_issue", "PRISM.number"]) ?? undefined;
+    const firstPage = getMeta(doc, ["citation_firstpage"]);
+    const lastPage = getMeta(doc, ["citation_lastpage"]);
+    const pages = firstPage ? (lastPage ? `${firstPage}-${lastPage}` : firstPage) : undefined;
+    const pmid = getMeta(doc, ["citation_pmid"]) ?? undefined;
+    const issn = getMeta(doc, ["citation_issn", "PRISM.issn", "PRISM.eIssn"]) ?? undefined;
+    const publisher = getMeta(doc, ["citation_publisher", "DC.Publisher"]) ?? undefined;
+    const language = getMeta(doc, ["citation_language", "DC.Language"]) ?? undefined;
+
+    // Keywords: citation_keywords may be comma-separated; DC.Subject may have multiple tags
+    let keywords: string[] | undefined;
+    const keywordStr = getMeta(doc, ["citation_keywords"]);
+    if (keywordStr) {
+      keywords = keywordStr.split(",").map((k) => k.trim()).filter(Boolean);
+    }
+    if (!keywords?.length) {
+      const dcSubjects = getAllMeta(doc, "DC.Subject");
+      if (dcSubjects.length) keywords = dcSubjects;
+    }
+
     // Abstract: prefer meta tags, but fall back to DOM extraction if truncated
     let abstract = getMeta(doc, ["citation_abstract", "DC.Description", "og:description"]) ?? undefined;
     if (!abstract || abstract.length < 200) {
@@ -274,6 +296,14 @@ export const genericTranslator: Translator = {
       pdf_url,
       full_text: full_text ?? undefined,
       structured_text: structured_text ?? undefined,
+      volume,
+      issue,
+      pages,
+      pmid,
+      issn,
+      publisher,
+      keywords: keywords?.length ? keywords : undefined,
+      language,
     };
   },
 

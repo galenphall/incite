@@ -1,6 +1,7 @@
 import type { ChromeExtensionSettings } from "../shared/types";
 import { DEFAULT_SETTINGS } from "../shared/constants";
 import { loadSettings, saveSettings } from "../shared/settings";
+import { formatHotkey } from "../shared/hotkey";
 
 // Citation style presets
 const CITATION_PRESETS: Record<string, string> = {
@@ -25,10 +26,16 @@ const localFields = document.getElementById("local-fields")!;
 const localUrl = document.getElementById("localUrl") as HTMLInputElement;
 const contextSentences = document.getElementById("contextSentences") as HTMLInputElement;
 const overleafFmt = document.getElementById("overleafCitationFormat") as HTMLInputElement;
+const hotkeyRecorder = document.getElementById("savePaperHotkey")!;
+const hotkeyDisplay = hotkeyRecorder.querySelector(".hotkey-display")!;
+const hotkeyHint = hotkeyRecorder.querySelector(".hotkey-hint")!;
 const btnTest = document.getElementById("btn-test")!;
 const testResult = document.getElementById("test-result")!;
 const btnSave = document.getElementById("btn-save")!;
 const saveStatus = document.getElementById("save-status")!;
+
+// Current hotkey value (updated by recorder, saved on Save click)
+let currentHotkey = DEFAULT_SETTINGS.savePaperHotkey;
 
 // --- Load settings on page open ---
 loadSettings().then(populateForm);
@@ -43,6 +50,40 @@ apiModeRadios.forEach((radio) => {
   radio.addEventListener("change", () => {
     localFields.classList.toggle("hidden", radio.value !== "local");
   });
+});
+
+// --- Hotkey recorder ---
+let recording = false;
+
+hotkeyRecorder.addEventListener("click", () => {
+  recording = true;
+  hotkeyRecorder.classList.add("recording");
+  hotkeyHint.textContent = "Press keys";
+  hotkeyRecorder.focus();
+});
+
+hotkeyRecorder.addEventListener("keydown", (e: Event) => {
+  if (!recording) return;
+  const event = e as KeyboardEvent;
+  event.preventDefault();
+  event.stopPropagation();
+
+  const formatted = formatHotkey(event);
+  if (!formatted) return; // Lone modifier press, keep listening
+
+  currentHotkey = formatted;
+  hotkeyDisplay.textContent = formatted;
+  hotkeyHint.textContent = "Click to record";
+  hotkeyRecorder.classList.remove("recording");
+  recording = false;
+});
+
+hotkeyRecorder.addEventListener("blur", () => {
+  if (recording) {
+    hotkeyHint.textContent = "Click to record";
+    hotkeyRecorder.classList.remove("recording");
+    recording = false;
+  }
 });
 
 // --- Test connection (saves first to use current form values) ---
@@ -99,6 +140,7 @@ btnSave.addEventListener("click", async () => {
     overleafCitationFormat: overleafFmt.value || DEFAULT_SETTINGS.overleafCitationFormat,
     showParagraphs: showParagraphs.checked,
     showAbstracts: showAbstracts.checked,
+    savePaperHotkey: currentHotkey,
   };
 
   await saveSettings(settings);
@@ -122,6 +164,10 @@ function populateForm(settings: ChromeExtensionSettings) {
   kInput.value = String(settings.k);
   showParagraphs.checked = settings.showParagraphs;
   showAbstracts.checked = settings.showAbstracts;
+
+  // Hotkey
+  currentHotkey = settings.savePaperHotkey || DEFAULT_SETTINGS.savePaperHotkey;
+  hotkeyDisplay.textContent = currentHotkey;
 
   // Advanced
   apiModeRadios.forEach((radio) => {

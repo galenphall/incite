@@ -24,6 +24,15 @@ export interface PaperMetadata {
   pdf_url?: string;
   full_text?: string;  // Article body text extracted from page
   structured_text?: StructuredFullText;
+  volume?: string;
+  issue?: string;
+  pages?: string;       // e.g. "123-145"
+  pmid?: string;
+  pmcid?: string;
+  issn?: string;
+  publisher?: string;
+  keywords?: string[];
+  language?: string;
 }
 
 /** Detection result from a translator. */

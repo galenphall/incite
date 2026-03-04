@@ -8,8 +8,10 @@ import {
   escapeAttr,
   renderResultCardHTML,
   renderBibliographyHTML,
+  formatCitation,
 } from "@incite/shared";
 import { ChromeCitationStorage, getDocKeyFromActiveTab } from "../shared/citation-storage";
+import type { EditorType } from "../shared/types";
 
 // --- Chrome-specific class map ---
 
@@ -51,10 +53,12 @@ const CHROME_CLASS_MAP: UIClassMap = {
 let isLoading = false;
 const selectedRecs = new Map<string, Recommendation>();
 let tracker: CitationTracker | null = null;
-let panelSettings: { showParagraphs: boolean; showAbstracts: boolean } = {
+let panelSettings: { showParagraphs: boolean; showAbstracts: boolean; googleDocsCitationFormat: string } = {
   showParagraphs: true,
   showAbstracts: false,
+  googleDocsCitationFormat: "(${first_author}, ${year})",
 };
+let currentEditorType: EditorType = "unknown";
 
 async function loadPanelSettings() {
   try {
@@ -63,11 +67,25 @@ async function loadPanelSettings() {
       panelSettings = {
         showParagraphs: response.settings.showParagraphs ?? true,
         showAbstracts: response.settings.showAbstracts ?? false,
+        googleDocsCitationFormat: response.settings.googleDocsCitationFormat ?? "(${first_author}, ${year})",
       };
     }
   } catch (err) {
     console.error("Failed to load panel settings:", err);
   }
+}
+
+/** Detect editor type from the active tab URL. */
+async function detectEditorType(): Promise<EditorType> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = tab?.url ?? "";
+    if (url.includes("docs.google.com/document")) return "googledocs";
+    if (url.includes("overleaf.com/project")) return "overleaf";
+  } catch {
+    // Ignore
+  }
+  return "unknown";
 }
 
 let collections: Collection[] = [];
@@ -127,10 +145,11 @@ chrome.storage.sync.get("incite_collection_id", (result) => {
   selectedCollectionId = result.incite_collection_id ?? null;
 });
 
-// Check health, load settings, and initialize tracker on load
+// Check health, load settings, detect editor type, and initialize tracker on load
 checkHealth();
 loadPanelSettings();
 initTracker();
+detectEditorType().then((et) => { currentEditorType = et; });
 
 // --- Tracker initialization ---
 
@@ -156,7 +175,7 @@ async function getRecommendations() {
     if (response?.error) {
       showExtractionError(response.error);
     } else if (response?.response) {
-      await showResults(response.response);
+      await showResults(response.response, response.query);
     } else {
       showError("Unexpected response from service worker.");
     }
@@ -268,7 +287,7 @@ function showExtractionError(message: string) {
   manualText.focus();
 }
 
-async function showResults(response: RecommendResponse) {
+async function showResults(response: RecommendResponse, queryText?: string) {
   await loadPanelSettings();
   const recs = response.recommendations;
   selectedRecs.clear();
@@ -280,10 +299,19 @@ async function showResults(response: RecommendResponse) {
 
   let html = "";
 
-  // Timing info
-  if (response.timing?.total_ms) {
-    html += `<div class="timing">${recs.length} results in ${Math.round(response.timing.total_ms)}ms -- ${response.corpus_size} papers</div>`;
+  // Show query context for debugging
+  if (queryText) {
+    const truncated = queryText.length > 300 ? queryText.slice(0, 300) + "..." : queryText;
+    html += `<div class="query-context"><details><summary class="timing">Query context</summary><p style="font-size:11px;color:var(--fg-muted);white-space:pre-wrap;margin:4px 0;">${escapeHtml(truncated)}</p></details></div>`;
   }
+
+  // Results header with timing and clear button
+  html += `<div class="results-header">`;
+  if (response.timing?.total_ms) {
+    html += `<span class="timing">${recs.length} results in ${Math.round(response.timing.total_ms)}ms — ${response.corpus_size} papers</span>`;
+  }
+  html += `<button id="btn-clear-results" class="btn-clear-results" title="Clear results">✕</button>`;
+  html += `</div>`;
 
   // Selection bar (hidden by default)
   html += `<div id="selection-bar" class="selection-bar" style="display:none;">`;
@@ -366,6 +394,12 @@ async function showResults(response: RecommendResponse) {
     updateSelectionBar();
   });
 
+  // Clear results button
+  document.getElementById("btn-clear-results")?.addEventListener("click", () => {
+    selectedRecs.clear();
+    content.innerHTML = `<div class="empty-state"><p>Select text in your document, then click <strong>Get Recommendations</strong>.</p></div>`;
+  });
+
   // Render bibliography below results
   renderBibliography();
 }
@@ -387,18 +421,41 @@ function updateSelectionBar() {
 
 async function insertCitation(rec: Recommendation) {
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: "INSERT_CITATION_REQUEST",
-      recommendation: rec,
-    });
-    if (response?.success === false) {
-      showToast("Could not insert -- copied to clipboard");
-      const key = rec.bibtex_key ?? rec.paper_id;
-      await navigator.clipboard.writeText(key);
-    } else if (response?.method === "clipboard") {
-      showToast("Copied -- paste with Cmd/Ctrl+V");
+    if (currentEditorType === "googledocs") {
+      // Google Docs: use REST API insertion
+      const citationText = formatCitation(rec, panelSettings.googleDocsCitationFormat);
+      const paperUrl = rec.doi
+        ? `https://doi.org/${rec.doi}`
+        : `https://inciteref.com/paper/${rec.paper_id}`;
+      const response = await chrome.runtime.sendMessage({
+        type: "GDOCS_INSERT_CITATION",
+        paperId: rec.paper_id,
+        text: citationText,
+        paperUrl,
+      });
+      if (response?.success === false) {
+        showToast(response?.error ?? "Insert failed");
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(citationText);
+        showToast("Could not insert -- copied to clipboard");
+      } else {
+        showToast(`Inserted: ${citationText}`);
+      }
     } else {
-      showToast("Citation inserted");
+      // Overleaf/other: use legacy content script insertion
+      const response = await chrome.runtime.sendMessage({
+        type: "INSERT_CITATION_REQUEST",
+        recommendation: rec,
+      });
+      if (response?.success === false) {
+        showToast("Could not insert -- copied to clipboard");
+        const key = rec.bibtex_key ?? rec.paper_id;
+        await navigator.clipboard.writeText(key);
+      } else if (response?.method === "clipboard") {
+        showToast("Copied -- paste with Cmd/Ctrl+V");
+      } else {
+        showToast("Citation inserted");
+      }
     }
     // Track the citation
     if (tracker) {
@@ -416,16 +473,66 @@ async function insertMultiCitation() {
   if (recs.length === 0) return;
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: "INSERT_MULTI_CITATION_REQUEST",
-      recommendations: recs,
-    });
-    if (response?.success === false) {
-      showToast("Could not insert -- copied to clipboard");
-    } else if (response?.method === "clipboard") {
-      showToast(`${recs.length} citations copied -- paste with Cmd/Ctrl+V`);
+    if (currentEditorType === "googledocs") {
+      // Google Docs: build segments for grouped citation insertion
+      const template = panelSettings.googleDocsCitationFormat;
+      const segments: { text: string; paperUrl: string; paperId: string; offsetInFullText: number }[] = [];
+
+      // Build the full grouped citation text with segment tracking
+      const parts: string[] = [];
+      for (const rec of recs) {
+        let citText = formatCitation(rec, template);
+        // Strip outer parentheses from individual citations for grouping
+        // e.g., "(Smith, 2024)" → "Smith, 2024" so we can wrap the group
+        if (parts.length > 0 || recs.length > 1) {
+          citText = citText.replace(/^\((.+)\)$/, "$1");
+        }
+        const paperUrl = rec.doi
+          ? `https://doi.org/${rec.doi}`
+          : `https://inciteref.com/paper/${rec.paper_id}`;
+        segments.push({
+          text: citText,
+          paperUrl,
+          paperId: rec.paper_id,
+          offsetInFullText: 0, // Will be calculated below
+        });
+        parts.push(citText);
+      }
+
+      // Join with "; " separator and wrap in parentheses for grouped citations
+      const fullText = parts.length > 1 ? `(${parts.join("; ")})` : formatCitation(recs[0], template);
+
+      // Calculate offsets within the full text
+      let offset = fullText.startsWith("(") ? 1 : 0; // Account for opening paren
+      for (let i = 0; i < segments.length; i++) {
+        segments[i].offsetInFullText = offset;
+        offset += segments[i].text.length;
+        if (i < segments.length - 1) offset += 2; // "; " separator
+      }
+
+      const response = await chrome.runtime.sendMessage({
+        type: "GDOCS_INSERT_MULTI_CITATION",
+        fullText,
+        segments,
+      });
+      if (response?.success === false) {
+        showToast(response?.error ?? "Insert failed");
+      } else {
+        showToast(`${recs.length} citations inserted`);
+      }
     } else {
-      showToast(`${recs.length} citations inserted`);
+      // Overleaf/other: use legacy content script insertion
+      const response = await chrome.runtime.sendMessage({
+        type: "INSERT_MULTI_CITATION_REQUEST",
+        recommendations: recs,
+      });
+      if (response?.success === false) {
+        showToast("Could not insert -- copied to clipboard");
+      } else if (response?.method === "clipboard") {
+        showToast(`${recs.length} citations copied -- paste with Cmd/Ctrl+V`);
+      } else {
+        showToast(`${recs.length} citations inserted`);
+      }
     }
     // Track all citations
     if (tracker) {
@@ -442,6 +549,75 @@ async function insertMultiCitation() {
   } catch {
     showToast("Insert failed");
   }
+}
+
+/** Send GDOCS_REFRESH_CITATIONS message and reconcile tracker with document state. */
+async function refreshAndReconcile(refreshText: boolean) {
+  if (!tracker) return;
+  const trackedIds = tracker.getAll().map((c) => c.paper_id);
+  const response = await chrome.runtime.sendMessage({
+    type: "GDOCS_REFRESH_CITATIONS",
+    trackedPaperIds: trackedIds,
+    refreshText,
+  });
+  if (!response?.success || !response.data) {
+    showToast(response?.error ?? "Refresh failed");
+    return;
+  }
+  const data = response.data as {
+    foundPaperIds: string[];
+    orphanedPaperIds: string[];
+    untrackedPaperIds: string[];
+    paperMetadata: Array<{
+      canonical_id: string;
+      title: string;
+      abstract: string;
+      authors: string[];
+      year: number | null;
+      doi: string;
+      journal: string;
+    }>;
+    duplicatesFixed: number;
+    citationsRefreshed: number;
+  };
+
+  // Remove orphaned citations (in tracker but not in document)
+  for (const id of data.orphanedPaperIds) {
+    await tracker.remove(id);
+  }
+
+  // Add untracked citations (in document but not in tracker)
+  if (data.untrackedPaperIds.length > 0) {
+    const metaMap = new Map(data.paperMetadata.map((p) => [p.canonical_id, p]));
+    const toTrack = data.untrackedPaperIds
+      .map((id) => {
+        const meta = metaMap.get(id);
+        return {
+          paper_id: id,
+          rank: 0,
+          score: 0,
+          title: meta?.title ?? id,
+          authors: meta?.authors,
+          year: meta?.year ?? undefined,
+          doi: meta?.doi,
+          journal: meta?.journal,
+          abstract: meta?.abstract,
+        };
+      });
+    await tracker.track(toTrack);
+  }
+
+  // Re-render UI
+  refreshCitedBadges();
+  renderBibliography(true);
+
+  // Show summary toast
+  const parts: string[] = [`${data.foundPaperIds.length} citations`];
+  if (data.orphanedPaperIds.length > 0) parts.push(`${data.orphanedPaperIds.length} orphaned removed`);
+  if (data.untrackedPaperIds.length > 0) parts.push(`${data.untrackedPaperIds.length} added to tracker`);
+  if (data.duplicatesFixed > 0) parts.push(`${data.duplicatesFixed} duplicates fixed`);
+  if (data.citationsRefreshed > 0) parts.push(`${data.citationsRefreshed} reformatted`);
+  showToast(parts.join(", "));
 }
 
 /** Update "Cited" badges on result cards without re-rendering everything. */
@@ -467,7 +643,11 @@ function refreshCitedBadges() {
 
 // --- Bibliography section ---
 
-function renderBibliography() {
+function renderBibliography(keepOpen = false) {
+  // Check if bibliography was expanded before re-render
+  const existingToggle = document.querySelector(`#bibliography-section .${CHROME_CLASS_MAP.bibToggle}`);
+  const wasExpanded = keepOpen && existingToggle?.classList.contains("expanded");
+
   // Remove existing bibliography section
   document.getElementById("bibliography-section")?.remove();
 
@@ -482,8 +662,19 @@ function renderBibliography() {
   wrapper.innerHTML = bibHtml;
   const bibElement = wrapper.firstElementChild as HTMLElement;
 
-  // Append after content area
-  document.body.appendChild(bibElement);
+  // Append the wrapper (which has the id for cleanup) after content area
+  wrapper.appendChild(bibElement);
+  document.body.appendChild(wrapper);
+
+  // Restore expanded state if it was open before
+  if (wasExpanded) {
+    const bibContent = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibContent}`) as HTMLElement | null;
+    const toggle = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibToggle}`);
+    if (bibContent && toggle) {
+      bibContent.style.display = "block";
+      toggle.classList.add("expanded");
+    }
+  }
 
   // Attach bibliography event listeners
   bibElement.querySelector(`.${CHROME_CLASS_MAP.bibToggle}`)?.addEventListener("click", () => {
@@ -520,9 +711,65 @@ function renderBibliography() {
       if (!paperId || !tracker) return;
       await tracker.remove(paperId);
       refreshCitedBadges();
-      renderBibliography();
+      renderBibliography(true);
     });
   });
+
+  // --- Google Docs-specific bibliography actions ---
+  if (currentEditorType === "googledocs") {
+    const gdocsBar = document.createElement("div");
+    gdocsBar.className = "gdocs-bib-actions";
+    gdocsBar.innerHTML = `
+      <button class="btn-small btn-insert" data-action="gdocs-insert-bib">Insert Bibliography</button>
+      <button class="btn-small" data-action="gdocs-refresh">Refresh</button>
+      <button class="btn-small" data-action="gdocs-clean">Clean Links</button>
+    `;
+
+    // Insert after the export bar
+    const exportBar = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibExportBar}`);
+    if (exportBar) {
+      exportBar.after(gdocsBar);
+    } else {
+      const bibContent = bibElement.querySelector(`.${CHROME_CLASS_MAP.bibContent}`);
+      bibContent?.prepend(gdocsBar);
+    }
+
+    gdocsBar.querySelector("[data-action='gdocs-insert-bib']")?.addEventListener("click", async () => {
+      if (!tracker) return;
+      const citations = tracker.getAll();
+      const entries = citations.map((c) => ({
+        paperId: c.paper_id,
+        formatted: `${c.authors?.join(", ") ?? "Unknown"} (${c.year ?? "n.d."}). ${c.title}.${c.journal ? ` ${c.journal}.` : ""}${c.doi ? ` https://doi.org/${c.doi}` : ""}`,
+        url: c.doi ? `https://doi.org/${c.doi}` : undefined,
+      }));
+      const response = await chrome.runtime.sendMessage({
+        type: "GDOCS_INSERT_BIBLIOGRAPHY",
+        entries,
+      });
+      if (response?.success) {
+        showToast("Bibliography inserted");
+      } else {
+        showToast(response?.error ?? "Failed to insert bibliography");
+      }
+    });
+
+    gdocsBar.querySelector("[data-action='gdocs-refresh']")?.addEventListener("click", async () => {
+      if (!tracker) return;
+      showToast("Refreshing citations...");
+      await refreshAndReconcile(false);
+    });
+
+
+    gdocsBar.querySelector("[data-action='gdocs-clean']")?.addEventListener("click", async () => {
+      const response = await chrome.runtime.sendMessage({ type: "GDOCS_CLEAN" });
+      if (response?.success) {
+        const data = response.data as { cleaned: number } | undefined;
+        showToast(`Cleaned ${data?.cleaned ?? 0} inCite markers`);
+      } else {
+        showToast(response?.error ?? "Clean failed");
+      }
+    });
+  }
 }
 
 function copyAndDownload(text: string, filename: string, toastMsg: string) {

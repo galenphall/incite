@@ -93,9 +93,9 @@ const root = document.getElementById("popup-root")!;
       collections = collectionsResp.collections;
     }
 
-    // Restore last-used collection
+    // Restore last-used collection (only if it still exists)
     const stored = await chrome.storage.local.get("lastCollectionId");
-    if (stored.lastCollectionId) {
+    if (stored.lastCollectionId && collections.some((c) => c.id === stored.lastCollectionId)) {
       selectedCollectionId = stored.lastCollectionId;
     }
 

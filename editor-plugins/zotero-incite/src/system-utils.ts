@@ -239,10 +239,10 @@ export async function installIncite(): Promise<void> {
 			return;
 		}
 
-		// Step 4: Install incite-app[lite] into the venv
-		installState = { status: "running", output: "Installing incite-app[lite]..." };
+		// Step 4: Install incite[lite] into the venv
+		installState = { status: "running", output: "Installing incite[lite]..." };
 		const vpy = venvPython();
-		const { exitCode, stdout } = await runCommand(uv, ["pip", "install", "incite-app[lite]", "--prerelease=allow", "--python", vpy]);
+		const { exitCode, stdout } = await runCommand(uv, ["pip", "install", "incite[lite]", "--prerelease=allow", "--refresh", "--python", vpy]);
 		if (exitCode === 0) {
 			installState = { status: "done", output: stdout };
 		} else {

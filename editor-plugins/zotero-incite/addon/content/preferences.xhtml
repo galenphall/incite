@@ -36,7 +36,15 @@
 			<label data-l10n-id="incite-prefs-api-token" />
 			<html:input id="incite-pref-apiToken" type="password"
 				preference="extensions.incite.apiToken"
-				style="flex: 1;" />
+				style="flex: 1;" placeholder="Set via Control Center sign-in" />
+		</hbox>
+		<description style="font-size: 11px; color: #888; margin-left: 4px;">
+			Tip: Use the Sign In button in the Control Center panel for easier setup.
+		</description>
+		<hbox align="center">
+			<checkbox id="incite-pref-includeGroupLibraries"
+				label="Include group libraries"
+				preference="extensions.incite.includeGroupLibraries" />
 		</hbox>
 	</groupbox>
 </vbox>

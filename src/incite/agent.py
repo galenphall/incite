@@ -62,6 +62,8 @@ class AgentRecommendation:
     year: Optional[int] = None
     abstract: Optional[str] = None  # First 300 chars
     bibtex_key: Optional[str] = None
+    doi: Optional[str] = None
+    journal: Optional[str] = None
     score_breakdown: dict[str, float] = field(default_factory=dict)
     matched_paragraph: Optional[str] = None  # For paragraph mode
     matched_paragraphs: list[dict] = field(default_factory=list)
@@ -456,18 +458,21 @@ class InCiteAgent:
             len(papers_needing_embed),
         )
 
-        # 2. Chunk papers that need embedding (new or changed)
+        # 2. Extract PDF text for papers that need re-processing
         if papers_needing_embed:
-            papers_to_chunk = [p for p in papers if p.id in set(papers_needing_embed)]
+            papers_to_process = [p for p in papers if p.id in set(papers_needing_embed)]
+            _extract_pdfs_for_papers(papers_to_process)
+
+            # 3. Chunk papers (now with PDF paragraphs populated)
             chunker = get_chunker(chunking_strategy)
-            new_chunks = chunker(papers_to_chunk, show_progress=False)
+            new_chunks = chunker(papers_to_process, show_progress=False)
 
             # Remove old chunks for re-chunked papers, then insert new ones
             db.delete_chunks_for_papers(papers_needing_embed)
             db.upsert_chunks(new_chunks)
-            logger.info("Chunked %d papers → %d chunks", len(papers_to_chunk), len(new_chunks))
+            logger.info("Chunked %d papers → %d chunks", len(papers_to_process), len(new_chunks))
 
-        # 3. Embed papers that need it
+        # 4. Embed papers that need it
         paper_ids_to_embed = db.needs_embedding("papers")
         if paper_ids_to_embed:
             embed_texts = db.get_embedding_texts(paper_ids_to_embed, "papers")
@@ -476,7 +481,7 @@ class InCiteAgent:
             db.store_embeddings(paper_ids_to_embed, paper_embeddings, "papers")
             logger.info("Embedded %d papers", len(paper_ids_to_embed))
 
-        # 4. Embed chunks that need it
+        # 5. Embed chunks that need it
         chunk_ids_to_embed = db.needs_embedding("chunks")
         if chunk_ids_to_embed:
             embed_texts = db.get_embedding_texts(chunk_ids_to_embed, "chunks")
@@ -485,7 +490,7 @@ class InCiteAgent:
             db.store_embeddings(chunk_ids_to_embed, chunk_embeddings, "chunks")
             logger.info("Embedded %d chunks", len(chunk_ids_to_embed))
 
-        # 5. Build FAISS index for papers from stored embeddings
+        # 6. Build FAISS index for papers from stored embeddings
         all_paper_ids, all_paper_vecs = db.load_paper_embeddings()
         from incite.embeddings.stores import FAISSStore
 
@@ -502,7 +507,7 @@ class InCiteAgent:
             show_progress=False,
         )
 
-        # 6. Build evidence store from chunk embeddings
+        # 7. Build evidence store from chunk embeddings
         evidence_store = None
         evidence_chunks = None
         two_stage = False
@@ -1004,6 +1009,8 @@ class InCiteAgent:
                         year=paper.year,
                         abstract=abstract_preview,
                         bibtex_key=paper.bibtex_key,
+                        doi=paper.doi,
+                        journal=paper.journal,
                         confidence=min(1.0, max(0.0, score)),
                     )
                 )
@@ -1109,6 +1116,8 @@ class InCiteAgent:
                     year=paper.year,
                     abstract=abstract_preview,
                     bibtex_key=paper.bibtex_key,
+                    doi=paper.doi,
+                    journal=paper.journal,
                     score_breakdown=result.score_breakdown,
                     matched_paragraph=result.matched_paragraph,
                     matched_paragraphs=result.matched_paragraphs,
@@ -1282,3 +1291,50 @@ class InCiteAgent:
         )
 
         return stats
+
+
+def _extract_pdfs_for_papers(papers: list, max_workers: int = 8) -> None:
+    """Extract PDF text into paper.paragraphs/full_text using PyMuPDF.
+
+    Modifies papers in-place. Papers without source_file or without
+    pymupdf installed are silently skipped.
+    """
+    try:
+        import fitz  # noqa: F401
+    except ImportError:
+        logger.info("pymupdf not installed, skipping PDF extraction")
+        return
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from incite.corpus.pdf_extractor import extract_pdf_text
+
+    papers_with_pdfs = [p for p in papers if p.source_file and Path(p.source_file).exists()]
+    if not papers_with_pdfs:
+        return
+
+    def _extract_single(paper):
+        result = extract_pdf_text(paper.source_file)
+        return paper.id, result.full_text or "", result.paragraphs or []
+
+    results_map: dict[str, tuple[str, list[str]]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_extract_single, p): p for p in papers_with_pdfs}
+        for future in as_completed(futures):
+            try:
+                paper_id, full_text, paragraphs = future.result()
+                if full_text:
+                    results_map[paper_id] = (full_text, paragraphs)
+            except Exception:
+                logger.debug("PDF extraction failed for %s", futures[future].id, exc_info=True)
+
+    # Update papers in-place
+    for paper in papers:
+        if paper.id in results_map:
+            paper.full_text, paper.paragraphs = results_map[paper.id]
+
+    logger.info(
+        "PDF extraction: %d/%d papers had extractable text",
+        len(results_map),
+        len(papers_with_pdfs),
+    )

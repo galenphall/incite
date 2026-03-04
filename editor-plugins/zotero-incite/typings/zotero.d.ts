@@ -177,7 +177,8 @@ declare namespace Zotero {
 		getCreators(): Array<{
 			firstName?: string;
 			lastName?: string;
-			creatorType: string;
+			creatorTypeID: number;
+			fieldMode?: number;
 		}>;
 		setCreators(creators: Array<{ firstName: string; lastName: string; creatorType: string }>): void;
 		getTags(): Array<{ tag: string }>;
