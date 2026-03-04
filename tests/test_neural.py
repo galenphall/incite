@@ -8,9 +8,7 @@ from incite.retrieval.neural import NeuralRetriever
 class TestNeuralRetriever:
     @pytest.fixture(scope="class")
     def neural_retriever(self, mock_embedder, sample_papers):
-        return NeuralRetriever.from_papers(
-            sample_papers, mock_embedder, show_progress=False
-        )
+        return NeuralRetriever.from_papers(sample_papers, mock_embedder, show_progress=False)
 
     def test_retrieve_returns_results(self, neural_retriever):
         results = neural_retriever.retrieve("sea level rise", k=5)
@@ -40,9 +38,7 @@ class TestNeuralRetriever:
             assert "neural" in r.score_breakdown
 
     def test_return_timing(self, neural_retriever):
-        results, timing = neural_retriever.retrieve(
-            "sea level", k=3, return_timing=True
-        )
+        results, timing = neural_retriever.retrieve("sea level", k=3, return_timing=True)
         assert isinstance(results, list)
         assert isinstance(timing, dict)
         assert "embed_query_ms" in timing
@@ -52,9 +48,7 @@ class TestNeuralRetriever:
         query = "coastal flooding"
         qvec = mock_embedder.embed_query(query)
         results_normal = neural_retriever.retrieve(query, k=6)
-        results_precomp = neural_retriever.retrieve(
-            query, k=6, query_embedding=qvec
-        )
+        results_precomp = neural_retriever.retrieve(query, k=6, query_embedding=qvec)
         ids_normal = [r.paper_id for r in results_normal]
         ids_precomp = [r.paper_id for r in results_precomp]
         assert ids_normal == ids_precomp

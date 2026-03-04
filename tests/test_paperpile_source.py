@@ -90,9 +90,7 @@ class TestExtractAuthorYearTitle:
         assert year == "2019"
 
     def test_no_match_returns_title_fallback(self):
-        author, year, title = _extract_author_year_title_from_filename(
-            "random_file_name.pdf"
-        )
+        author, year, title = _extract_author_year_title_from_filename("random_file_name.pdf")
         assert author == ""
         assert year == ""
         assert len(title) > 0

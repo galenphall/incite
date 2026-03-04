@@ -3,14 +3,14 @@
 import pytest
 
 from incite.corpus.sentence_chunking import (
-    chunk_paper_sentences,
-    chunk_papers_sentences,
-    _split_sentences,
-    _split_sentences_regex,
     _build_sentence_context,
     _is_short_reference,
+    _split_sentences,
+    _split_sentences_regex,
+    chunk_paper_sentences,
+    chunk_papers_sentences,
 )
-from incite.models import Chunk, Paper
+from incite.models import Paper
 
 
 class TestSplitSentences:
@@ -259,7 +259,10 @@ class TestChunkPaperSentences:
 
         if len(chunks) >= 2:
             # Second chunk's context should include first sentence
-            assert chunks[0].text in chunks[1].context_text or "First sentence" in chunks[1].context_text
+            assert (
+                chunks[0].text in chunks[1].context_text
+                or "First sentence" in chunks[1].context_text
+            )
 
 
 class TestChunkPapersSentences:

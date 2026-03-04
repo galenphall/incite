@@ -1,6 +1,5 @@
 """Tests for FAISSStore and ChunkStore."""
 
-import numpy as np
 import pytest
 
 from incite.embeddings.chunk_store import ChunkStore
