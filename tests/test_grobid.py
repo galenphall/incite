@@ -146,3 +146,4 @@ class TestGROBIDXMLParsing:
         result = client._parse_tei_xml("<not valid xml")
         assert result.title is None
         assert result.sections == []
+

@@ -95,6 +95,7 @@ class GROBIDResult:
         return paragraphs
 
 
+
 def _extract_page_number(p_elem: ET.Element) -> int | None:
     """Extract 1-indexed page number from a GROBID <p> element's @coords attribute.
 
