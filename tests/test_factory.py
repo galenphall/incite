@@ -133,15 +133,15 @@ class TestCreateRetriever:
         # Create papers with enough text to generate chunks
         papers_long = [
             Paper(
-                id="p1",
-                title="Long Paper 1",
+                id="p1", 
+                title="Long Paper 1", 
                 abstract="This is an abstract that is reasonably long but maybe not long enough for a chunk unless we pad it.",
                 full_text=(
                     "This is the first sentence of the paper and it is quite long to ensure it passes length filters. "
                     "Here is a second sentence that adds more content to the paragraph. "
                     "We need to make sure there are enough sentences to be split correctly. "
                     "Finally, a fourth sentence concludes this paragraph with sufficient detail."
-                ),
+                )
             ),
             Paper(
                 id="p2",
@@ -152,8 +152,8 @@ class TestCreateRetriever:
                     "It also contains multiple sentences to verify the sentence chunking logic. "
                     "The quick brown fox jumps over the lazy dog in this standard test sentence. "
                     "Testing the multi-scale retriever requires robust test data."
-                ),
-            ),
+                )
+            )
         ]
 
         monkeypatch.setattr(factory, "get_embedder", lambda *a, **kw: mock_embedder)

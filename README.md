@@ -12,10 +12,8 @@ inCite is a local-first citation recommendation system. It indexes your Zotero l
 
 - **Local-first**: Your papers and writing stay on your machine
 - **Works with what you have**: Zotero library, a folder of PDFs, or a JSONL corpus
-- **Editor plugins**: Obsidian, VS Code, Google Docs (via Chrome extension), Microsoft Word, and Zotero
+- **Editor plugins**: Obsidian, VS Code, Google Docs, and Microsoft Word
 - **Fine-tuned models**: Citation-specific sentence transformers trained on 64K academic citation contexts
-- **Export results**: CSV, JSON, and CSL-JSON bibliography formats
-- **Page numbers**: Chunks include page numbers from PDF extraction for precise references
 
 ## Quick Start
 
@@ -78,9 +76,8 @@ inCite integrates with your writing environment via editor plugins that connect 
 |--------|--------|---------|
 | **Obsidian** | Stable | Build from `editor-plugins/obsidian-incite/` |
 | **VS Code** | Stable | Build from `editor-plugins/vscode-incite/` |
-| **Chrome / Google Docs** | Stable | Chrome extension with inline Google Docs support. Build from `editor-plugins/chrome-incite-v2/` |
-| **Microsoft Word** | Beta | Office.js add-in, sideload from `editor-plugins/word-incite/` |
-| **Zotero** | Stable | Zotero 7 plugin with cloud sync and collection sync. Build from `editor-plugins/zotero-incite/` |
+| **Google Docs** | Stable | Apps Script add-on via `clasp push` |
+| **Microsoft Word** | Beta | Office.js add-in, sideload `manifest.xml` |
 
 All plugins share the `@incite/shared` TypeScript package for API communication and context extraction.
 
@@ -134,17 +131,16 @@ pip install incite[all]       # Everything
 
 > **Note**: The `pdf` and `zotero` extras pull in AGPL and GPL dependencies respectively. If license compatibility matters for your use case, install only the extras you need.
 
-## Cloud vs Local
+## Cloud Service
 
-[inciteref.com](https://inciteref.com) offers a hosted version with additional features. The local CLI and cloud service are complementary -- use whichever fits your workflow.
+[inciteref.com](https://inciteref.com) offers a hosted version of inCite with additional features:
 
-| Feature | Local (free) | Cloud ($8/mo) |
-|---------|-------------|---------------|
-| Embedding model | MiniLM-FT v4 (MRR 0.428) | Granite-FT v6b (MRR 0.550) |
-| PDF processing | Self-managed | Managed GROBID |
-| Multi-device sync | No | Yes (Zotero OAuth) |
-| Reference manager | No | Yes |
-| Paper discovery | No | Yes (citation graph) |
+- **Better model**: Granite-FT fine-tuned embedder (MRR 0.550 vs 0.428 for the default local model)
+- **Cloud PDF processing**: Full-text extraction without running GROBID locally
+- **Reference manager**: Collections, tags, notes, and citation export (BibTeX/RIS)
+- **Multi-device sync**: Access your library from anywhere
+
+The local CLI and cloud service are complementary -- use whichever fits your workflow.
 
 ## Contributing
 

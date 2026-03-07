@@ -1,7 +1,6 @@
 """Tests for agent-friendly testing interface."""
 
 import json
-
 import pytest
 
 from incite.agent import (
@@ -10,6 +9,7 @@ from incite.agent import (
     InCiteAgent,
     TimingInfo,
 )
+from incite.models import Paper
 
 
 class TestAgentResponse:
@@ -63,32 +63,29 @@ class TestInCiteAgentFromCorpus:
     @pytest.fixture
     def test_corpus(self, tmp_path):
         """Create a minimal corpus for testing."""
-        return _write_corpus(
-            tmp_path,
-            [
-                {
-                    "id": "paper1",
-                    "title": "Deep Learning for NLP",
-                    "abstract": "This paper presents deep learning methods for natural language processing.",
-                    "authors": ["Smith, John", "Doe, Jane"],
-                    "year": 2023,
-                },
-                {
-                    "id": "paper2",
-                    "title": "Machine Learning Basics",
-                    "abstract": "An introduction to machine learning concepts and algorithms.",
-                    "authors": ["Wilson, Bob"],
-                    "year": 2022,
-                },
-                {
-                    "id": "paper3",
-                    "title": "Neural Network Architectures",
-                    "abstract": "A survey of neural network architectures for various tasks.",
-                    "authors": ["Jones, Alice", "Brown, Charlie"],
-                    "year": 2024,
-                },
-            ],
-        )
+        return _write_corpus(tmp_path, [
+            {
+                "id": "paper1",
+                "title": "Deep Learning for NLP",
+                "abstract": "This paper presents deep learning methods for natural language processing.",
+                "authors": ["Smith, John", "Doe, Jane"],
+                "year": 2023,
+            },
+            {
+                "id": "paper2",
+                "title": "Machine Learning Basics",
+                "abstract": "An introduction to machine learning concepts and algorithms.",
+                "authors": ["Wilson, Bob"],
+                "year": 2022,
+            },
+            {
+                "id": "paper3",
+                "title": "Neural Network Architectures",
+                "abstract": "A survey of neural network architectures for various tasks.",
+                "authors": ["Jones, Alice", "Brown, Charlie"],
+                "year": 2024,
+            },
+        ])
 
     def test_from_corpus_creates_agent(self, test_corpus):
         """Test that from_corpus creates a working agent."""
@@ -190,25 +187,22 @@ class TestInCiteAgentHybrid:
     @pytest.fixture
     def test_corpus(self, tmp_path):
         """Create a corpus for testing hybrid retrieval."""
-        return _write_corpus(
-            tmp_path,
-            [
-                {
-                    "id": "paper1",
-                    "title": "Climate Change Impacts",
-                    "abstract": "Study of climate change impacts on global ecosystems.",
-                    "authors": ["Smith, John"],
-                    "year": 2023,
-                },
-                {
-                    "id": "paper2",
-                    "title": "Environmental Policy",
-                    "abstract": "Analysis of environmental policy effectiveness.",
-                    "authors": ["Doe, Jane"],
-                    "year": 2022,
-                },
-            ],
-        )
+        return _write_corpus(tmp_path, [
+            {
+                "id": "paper1",
+                "title": "Climate Change Impacts",
+                "abstract": "Study of climate change impacts on global ecosystems.",
+                "authors": ["Smith, John"],
+                "year": 2023,
+            },
+            {
+                "id": "paper2",
+                "title": "Environmental Policy",
+                "abstract": "Analysis of environmental policy effectiveness.",
+                "authors": ["Doe, Jane"],
+                "year": 2022,
+            },
+        ])
 
     @pytest.mark.slow
     def test_hybrid_recommend(self, test_corpus):
