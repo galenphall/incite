@@ -6,6 +6,8 @@ mechanisms in webapp/state.py.
 
 import json
 
+import pytest
+
 from incite.models import Chunk, Paper
 from incite.webapp.state import (
     CHUNK_CACHE_VERSION,
@@ -19,11 +21,7 @@ def _write_fake_chunks(path, n, text_fn=None):
     """Write n fake chunk JSONL lines to path."""
     with open(path, "w") as f:
         for i in range(n):
-            text = (
-                text_fn(i)
-                if text_fn
-                else f"Chunk text number {i} with enough content to be a valid paragraph."
-            )
+            text = text_fn(i) if text_fn else f"Chunk text number {i} with enough content to be a valid paragraph."
             data = {
                 "id": f"paper_{i % 10}::chunk_{i}",
                 "paper_id": f"paper_{i % 10}",
@@ -34,20 +32,16 @@ def _write_fake_chunks(path, n, text_fn=None):
 
 def _fake_chunker_factory(n_per_paper):
     """Return a chunker function that produces exactly n_per_paper chunks per paper."""
-
     def _chunker(papers, show_progress=False):
         chunks = []
         for p in papers:
             for j in range(n_per_paper):
-                chunks.append(
-                    Chunk(
-                        id=f"{p.id}::chunk_{j}",
-                        paper_id=p.id,
-                        text=f"Chunk {j} of paper {p.id} with enough text to pass validation.",
-                    )
-                )
+                chunks.append(Chunk(
+                    id=f"{p.id}::chunk_{j}",
+                    paper_id=p.id,
+                    text=f"Chunk {j} of paper {p.id} with enough text to pass validation.",
+                ))
         return chunks
-
     return _chunker
 
 
@@ -76,11 +70,11 @@ class TestOverwriteProtection:
         _write_fake_chunks(chunks_path, 2000)
         _set_chunk_cache_version(tmp_path, "paragraph", CHUNK_CACHE_VERSION)
 
-        papers = [
-            Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(100)
-        ]
+        papers = [Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(100)]
 
-        result = state.load_zotero_chunks(papers, force_rebuild=True, chunking_strategy="paragraph")
+        result = state.load_zotero_chunks(
+            papers, force_rebuild=True, chunking_strategy="paragraph"
+        )
         # Should return old cache (2000) instead of new small set (100)
         assert len(result) == 2000
 
@@ -94,11 +88,11 @@ class TestOverwriteProtection:
         _write_fake_chunks(chunks_path, 1000)
         _set_chunk_cache_version(tmp_path, "paragraph", CHUNK_CACHE_VERSION)
 
-        papers = [
-            Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(800)
-        ]
+        papers = [Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(800)]
 
-        result = state.load_zotero_chunks(papers, force_rebuild=True, chunking_strategy="paragraph")
+        result = state.load_zotero_chunks(
+            papers, force_rebuild=True, chunking_strategy="paragraph"
+        )
         # 800 >= 50% of 1000, so overwrite is allowed
         assert len(result) == 800
 
@@ -112,11 +106,11 @@ class TestOverwriteProtection:
         _write_fake_chunks(chunks_path, 500)
         _set_chunk_cache_version(tmp_path, "paragraph", CHUNK_CACHE_VERSION)
 
-        papers = [
-            Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(50)
-        ]
+        papers = [Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(50)]
 
-        result = state.load_zotero_chunks(papers, force_rebuild=True, chunking_strategy="paragraph")
+        result = state.load_zotero_chunks(
+            papers, force_rebuild=True, chunking_strategy="paragraph"
+        )
         # 500 < 1000 threshold, so overwrite is allowed
         assert len(result) == 50
 
@@ -130,11 +124,11 @@ class TestOverwriteProtection:
         _write_fake_chunks(chunks_path, 1000)
         _set_chunk_cache_version(tmp_path, "paragraph", CHUNK_CACHE_VERSION)
 
-        papers = [
-            Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(500)
-        ]
+        papers = [Paper(id=f"p{i}", title=f"Paper {i}", abstract=f"Abstract {i}.") for i in range(500)]
 
-        result = state.load_zotero_chunks(papers, force_rebuild=True, chunking_strategy="paragraph")
+        result = state.load_zotero_chunks(
+            papers, force_rebuild=True, chunking_strategy="paragraph"
+        )
         # 500 == 50% of 1000, condition is `< 0.5` so 0.5 is allowed
         assert len(result) == 500
 
@@ -168,38 +162,20 @@ class TestRefilterPath:
         # Write a mix of normal chunks and bibliography-like entries
         with open(chunks_path, "w") as f:
             # Normal chunk
-            f.write(
-                json.dumps(
-                    {
-                        "id": "p1::chunk_0",
-                        "paper_id": "p1",
-                        "text": "Sea levels are rising due to climate change and thermal expansion.",
-                    }
-                )
-                + "\n"
-            )
+            f.write(json.dumps({
+                "id": "p1::chunk_0", "paper_id": "p1",
+                "text": "Sea levels are rising due to climate change and thermal expansion.",
+            }) + "\n")
             # Bibliography entry (short text with many bib signals)
-            f.write(
-                json.dumps(
-                    {
-                        "id": "p1::chunk_1",
-                        "paper_id": "p1",
-                        "text": "Smith, J., Jones, A. (2023). Sea level rise. Journal of Climate, 36(4), pp. 123-145. doi:10.1234/jclim.2023",
-                    }
-                )
-                + "\n"
-            )
+            f.write(json.dumps({
+                "id": "p1::chunk_1", "paper_id": "p1",
+                "text": "Smith, J., Jones, A. (2023). Sea level rise. Journal of Climate, 36(4), pp. 123-145. doi:10.1234/jclim.2023",
+            }) + "\n")
             # Another normal chunk
-            f.write(
-                json.dumps(
-                    {
-                        "id": "p1::chunk_2",
-                        "paper_id": "p1",
-                        "text": "Ocean temperatures continue to increase across all major basins.",
-                    }
-                )
-                + "\n"
-            )
+            f.write(json.dumps({
+                "id": "p1::chunk_2", "paper_id": "p1",
+                "text": "Ocean temperatures continue to increase across all major basins.",
+            }) + "\n")
 
         result = _refilter_cached_chunks(chunks_path)
         # The bibliography entry should be filtered out
@@ -221,7 +197,9 @@ class TestRefilterPath:
 
         papers = [Paper(id="p0", title="Paper", abstract="Abstract")]
 
-        state.load_zotero_chunks(papers, force_rebuild=False, chunking_strategy="paragraph")
+        state.load_zotero_chunks(
+            papers, force_rebuild=False, chunking_strategy="paragraph"
+        )
         assert _get_chunk_cache_version(tmp_path, "paragraph") == CHUNK_CACHE_VERSION
 
 

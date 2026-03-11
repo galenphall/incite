@@ -11,6 +11,8 @@ export interface TrackedCitation {
 	journal?: string;
 	abstract?: string;
 	insertedAt: number;
+	/** The exact markdown link text inserted (e.g. "[Hall, 2024](zotero://...)"). Used for orphan detection. */
+	insertedText?: string;
 }
 
 /** Storage backend for persisting tracked citations. */
@@ -20,7 +22,10 @@ export interface CitationStorage {
 }
 
 /** Convert a Recommendation to a TrackedCitation. */
-export function recommendationToTracked(rec: Recommendation): TrackedCitation {
+export function recommendationToTracked(
+	rec: Recommendation,
+	insertedText?: string
+): TrackedCitation {
 	return {
 		paper_id: rec.paper_id,
 		bibtex_key: rec.bibtex_key ?? rec.paper_id,
@@ -31,6 +36,7 @@ export function recommendationToTracked(rec: Recommendation): TrackedCitation {
 		journal: rec.journal,
 		abstract: rec.abstract,
 		insertedAt: Date.now(),
+		insertedText,
 	};
 }
 
@@ -55,10 +61,10 @@ export class CitationTracker {
 	}
 
 	/** Track one or more citations after insertion. Persists immediately. */
-	async track(recs: Recommendation[]): Promise<void> {
+	async track(recs: Recommendation[], insertedText?: string): Promise<void> {
 		for (const rec of recs) {
 			if (!this.isTracked(rec.paper_id)) {
-				this.citations.push(recommendationToTracked(rec));
+				this.citations.push(recommendationToTracked(rec, insertedText));
 			}
 		}
 		await this.storage.save(this.docKey, this.citations);
@@ -73,6 +79,14 @@ export class CitationTracker {
 	/** Get all tracked citations sorted by insertion time. */
 	getAll(): TrackedCitation[] {
 		return [...this.citations].sort((a, b) => a.insertedAt - b.insertedAt);
+	}
+
+	/** Track a pre-built citation directly. Persists immediately. */
+	async trackCitation(citation: TrackedCitation): Promise<void> {
+		if (!this.isTracked(citation.paper_id)) {
+			this.citations.push(citation);
+		}
+		await this.storage.save(this.docKey, this.citations);
 	}
 
 	/** Check whether a paper has already been cited. */
