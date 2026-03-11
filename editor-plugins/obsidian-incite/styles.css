@@ -169,3 +169,211 @@
 
 /* Hide individual insert buttons when multi-selection is active */
 .has-selection .mayacite-result .mayacite-insert-btn { display: none; }
+
+/* --- Narrow-width responsive fixes --- */
+
+/* Ensure the sidebar container constrains children */
+.mayacite-results,
+.mayacite-bibliography {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.mayacite-result {
+	min-width: 0;
+	overflow: hidden;
+}
+
+/* Rank row: keep checkbox + rank on the left, badge on the right, never overflow */
+.mayacite-result-rank {
+	flex-wrap: nowrap;
+	gap: 4px;
+	min-width: 0;
+}
+
+.mayacite-select-checkbox {
+	flex-shrink: 0;
+}
+
+.mayacite-rank-number {
+	flex-shrink: 0;
+}
+
+.mayacite-confidence {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+/* Truncate long titles with ellipsis */
+.mayacite-result-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+}
+
+/* Truncate long author/meta lines */
+.mayacite-result-meta {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Evidence snippets: constrain within card boundaries */
+.mayacite-evidence-content {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.mayacite-paragraph {
+	max-width: 100%;
+	min-width: 0;
+	word-break: break-word;
+}
+
+/* Selection action bar: wrap buttons when narrow */
+.mayacite-selection-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	padding: 6px 8px;
+	margin-bottom: 6px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	min-width: 0;
+}
+
+.mayacite-selection-count {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.mayacite-selection-bar .mayacite-insert-btn,
+.mayacite-selection-bar .mayacite-clear-btn {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+.mayacite-clear-btn {
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+/* Insert button row: keep button and cited badge visible */
+.mayacite-result-actions {
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+	min-width: 0;
+}
+
+.mayacite-cited-badge {
+	font-size: var(--font-ui-smaller);
+	padding: 1px 6px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-success);
+	color: var(--text-on-accent);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* Bibliography section header */
+.mayacite-bib-header {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+	padding: 8px 0 4px 0;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 8px;
+	min-width: 0;
+}
+
+.mayacite-bib-header span:last-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mayacite-bib-toggle {
+	flex-shrink: 0;
+	display: inline-flex;
+}
+
+/* Bibliography export buttons: wrap when narrow */
+.mayacite-bib-export {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin: 4px 0;
+}
+
+.mayacite-export-btn {
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* Bibliography item rows: truncate title, keep remove button visible */
+.mayacite-bib-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.mayacite-bib-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	padding: 2px 0;
+}
+
+.mayacite-bib-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.mayacite-bib-title {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+}
+
+.mayacite-bib-remove {
+	flex-shrink: 0;
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--text-muted);
+	padding: 0 2px;
+	display: inline-flex;
+	align-items: center;
+}
+
+.mayacite-bib-remove:hover {
+	color: var(--text-error);
+}
+
+.mayacite-bib-empty {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	padding: 4px 0;
+}

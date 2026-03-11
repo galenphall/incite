@@ -33,8 +33,10 @@ interface LibraryCheckResult {
   title?: string;
   in_library: boolean;
   canonical_id?: string | null;
-  collections?: string[];
-  tags?: string[];
+  match_type?: "exact_doi" | "exact_title" | "fuzzy_title" | null;
+  library_title?: string | null;
+  collections?: Array<{ id: string; name: string }>;
+  tags?: Array<{ id: string; name: string }>;
 }
 
 // --- State ---
@@ -46,6 +48,7 @@ type PopupState =
   | { kind: "single-paper"; paper: PaperMetadata; check: LibraryCheckResult | null }
   | { kind: "multi-paper"; papers: PaperMetadata[]; checks: LibraryCheckResult[] }
   | { kind: "already-saved"; paper: PaperMetadata; check: LibraryCheckResult }
+  | { kind: "likely-saved"; paper: PaperMetadata; check: LibraryCheckResult }
   | { kind: "saving" }
   | { kind: "success"; savedCount: number; collectionName: string }
   | { kind: "error"; message: string };
@@ -104,20 +107,29 @@ const root = document.getElementById("popup-root")!;
 
     if (response.type === "single" && papers.length === 1) {
       const check = checks[0] ?? null;
-      if (check?.in_library) {
+      if (check?.in_library && check.match_type === "fuzzy_title") {
+        state = { kind: "likely-saved", paper: papers[0], check };
+        // Pre-populate tags from the existing library item
+        if (check.tags?.length) {
+          selectedTags = check.tags.map((t) => t.name);
+          showTagInput = true;
+        }
+      } else if (check?.in_library) {
         state = { kind: "already-saved", paper: papers[0], check };
         // Pre-populate tags from the existing library item
         if (check.tags?.length) {
-          selectedTags = [...check.tags];
+          selectedTags = check.tags.map((t) => t.name);
           showTagInput = true;
         }
       } else {
         state = { kind: "single-paper", paper: papers[0], check };
       }
     } else {
-      // Multi-paper: pre-select papers not in library
+      // Multi-paper: pre-select papers not exactly in library
+      // Fuzzy matches are left unchecked so the user explicitly opts in
       papers.forEach((_, i) => {
-        if (!checks[i]?.in_library) {
+        const isExact = checks[i]?.in_library && checks[i]?.match_type !== "fuzzy_title";
+        if (!isExact && !checks[i]?.in_library) {
           selectedPaperIndices.add(i);
         }
       });
@@ -158,6 +170,10 @@ function render() {
     case "already-saved":
       root.innerHTML = renderAlreadySaved(state.paper, state.check);
       bindAlreadySavedEvents();
+      break;
+    case "likely-saved":
+      root.innerHTML = renderLikelySaved(state.paper, state.check);
+      bindLikelySavedEvents();
       break;
     case "saving":
       root.innerHTML = renderSaving();
@@ -295,19 +311,27 @@ function renderSinglePaper(paper: PaperMetadata, _check: LibraryCheckResult | nu
 }
 
 function renderMultiPaper(papers: PaperMetadata[], checks: LibraryCheckResult[]): string {
-  const saveable = papers.filter((_, i) => !checks[i]?.in_library).length;
+  // Fuzzy matches are not counted as "in library" for the saveable count
+  const isExactMatch = (i: number) => checks[i]?.in_library && checks[i]?.match_type !== "fuzzy_title";
+  const isFuzzyMatch = (i: number) => checks[i]?.in_library && checks[i]?.match_type === "fuzzy_title";
+  const saveable = papers.filter((_, i) => !isExactMatch(i)).length;
   const selected = selectedPaperIndices.size;
 
   const items = papers.map((p, i) => {
-    const inLibrary = checks[i]?.in_library;
-    const checked = selectedPaperIndices.has(i) && !inLibrary;
-    const cls = inLibrary ? "multi-paper-item in-library" : "multi-paper-item";
+    const exact = isExactMatch(i);
+    const fuzzy = isFuzzyMatch(i);
+    const checked = selectedPaperIndices.has(i) && !exact;
+    const cls = exact ? "multi-paper-item in-library" : fuzzy ? "multi-paper-item fuzzy-match" : "multi-paper-item";
     const yearStr = p.year ? ` (${p.year})` : "";
-    const badge = inLibrary ? `<span class="multi-paper-badge">In library</span>` : "";
+    const badge = exact
+      ? `<span class="multi-paper-badge">In library</span>`
+      : fuzzy
+        ? `<span class="multi-paper-badge likely">Likely in library</span>`
+        : "";
 
     return `
       <div class="${cls}" data-index="${i}">
-        <input type="checkbox" ${checked ? "checked" : ""} ${inLibrary ? "disabled" : ""} data-index="${i}">
+        <input type="checkbox" ${checked ? "checked" : ""} ${exact ? "disabled" : ""} data-index="${i}">
         <div class="multi-paper-info">
           <div class="multi-paper-title">${escapeHtml(p.title)}${yearStr}</div>
           ${p.authors ? `<div class="multi-paper-meta">${escapeHtml(p.authors.slice(0, 3).join(", "))}${p.authors.length > 3 ? " et al." : ""}</div>` : ""}
@@ -338,10 +362,10 @@ function renderMultiPaper(papers: PaperMetadata[], checks: LibraryCheckResult[])
 
 function renderAlreadySaved(paper: PaperMetadata, check: LibraryCheckResult): string {
   const collectionStr = check.collections?.length
-    ? `In: ${check.collections.join(", ")}`
+    ? `In: ${check.collections.map((c) => c.name).join(", ")}`
     : "";
   const tagStr = check.tags?.length
-    ? `Tags: ${check.tags.join(", ")}`
+    ? `Tags: ${check.tags.map((t) => t.name).join(", ")}`
     : "";
 
   const url = settings.cloudUrl || "https://inciteref.com";
@@ -362,6 +386,42 @@ function renderAlreadySaved(paper: PaperMetadata, check: LibraryCheckResult): st
         <a href="${url}/library" target="_blank" class="btn-secondary" style="text-decoration: none; text-align: center;">View in Library</a>
         <button class="btn-primary" id="btn-update">Update</button>
         <button class="btn-secondary" id="btn-close">Close</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderLikelySaved(paper: PaperMetadata, check: LibraryCheckResult): string {
+  const collectionStr = check.collections?.length
+    ? `In: ${check.collections.map((c) => c.name).join(", ")}`
+    : "";
+  const tagStr = check.tags?.length
+    ? `Tags: ${check.tags.map((t) => t.name).join(", ")}`
+    : "";
+
+  const url = settings.cloudUrl || "https://inciteref.com";
+
+  return `
+    <div class="popup-header">
+      <h1>Likely already in your library</h1>
+    </div>
+    <div class="popup-state">
+      <div class="likely-saved">
+        <div class="likely-saved-comparison">
+          <div class="likely-saved-label">This page:</div>
+          <div class="likely-saved-value">${escapeHtml(paper.title)}</div>
+          <div class="likely-saved-label">In your library:</div>
+          <div class="likely-saved-value">${escapeHtml(check.library_title ?? check.title ?? "")}</div>
+        </div>
+        ${collectionStr ? `<div class="likely-saved-detail">${escapeHtml(collectionStr)}</div>` : ""}
+        ${tagStr ? `<div class="likely-saved-detail">${escapeHtml(tagStr)}</div>` : ""}
+      </div>
+      ${renderCollectionPicker()}
+      ${renderTagInput()}
+      <div class="popup-actions">
+        <a href="${url}/library" target="_blank" class="btn-secondary" style="text-decoration: none; text-align: center;">View in Library</a>
+        <button class="btn-secondary" id="btn-update">Update</button>
+        <button class="btn-primary" id="btn-save-new">Save as New</button>
       </div>
     </div>
   `;
@@ -432,13 +492,14 @@ function bindMultiPaperEvents() {
   document.getElementById("btn-select-all")?.addEventListener("click", () => {
     if (state.kind !== "multi-paper") return;
     const { papers, checks } = state;
-    const allSelected = papers.every((_, i) => checks[i]?.in_library || selectedPaperIndices.has(i));
+    const isExact = (idx: number) => checks[idx]?.in_library && checks[idx]?.match_type !== "fuzzy_title";
+    const allSelected = papers.every((_, i) => isExact(i) || selectedPaperIndices.has(i));
 
     if (allSelected) {
       selectedPaperIndices.clear();
     } else {
       papers.forEach((_, i) => {
-        if (!checks[i]?.in_library) selectedPaperIndices.add(i);
+        if (!isExact(i)) selectedPaperIndices.add(i);
       });
     }
     render();
@@ -516,6 +577,51 @@ function bindAlreadySavedEvents() {
     if (state.kind === "success") {
       setTimeout(() => window.close(), 1500);
     }
+  });
+
+  bindCollectionEvents();
+  bindTagEvents();
+}
+
+function bindLikelySavedEvents() {
+  // "Update" — same as already-saved, uses canonicalId from check
+  document.getElementById("btn-update")?.addEventListener("click", async () => {
+    if (state.kind !== "likely-saved") return;
+    const canonicalId = state.check.canonical_id;
+    if (!canonicalId) return;
+
+    state = { kind: "saving" };
+    render();
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "UPDATE_LIBRARY_ITEM",
+        canonicalId,
+        collectionId: selectedCollectionId,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
+      });
+
+      if (response?.error) {
+        state = { kind: "error", message: response.error };
+      } else {
+        const collectionName = collections.find((c) => c.id === selectedCollectionId)?.name ?? "My Library";
+        state = { kind: "success", savedCount: 1, collectionName };
+      }
+    } catch (err) {
+      state = { kind: "error", message: err instanceof Error ? err.message : "Update failed" };
+    }
+
+    render();
+
+    if (state.kind === "success") {
+      setTimeout(() => window.close(), 1500);
+    }
+  });
+
+  // "Save as New" — save the paper as a new entry
+  document.getElementById("btn-save-new")?.addEventListener("click", async () => {
+    if (state.kind !== "likely-saved") return;
+    await savePapers([state.paper]);
   });
 
   bindCollectionEvents();

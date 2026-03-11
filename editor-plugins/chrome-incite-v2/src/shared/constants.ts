@@ -5,7 +5,7 @@ export const DEFAULT_SETTINGS: ChromeExtensionSettings = {
   ...SHARED_DEFAULTS,
   citationStyle: "apa",
   googleDocsCitationFormat: "({first_author}, {year})",
-  overleafCitationFormat: "\\cite{{{bibtex_key}}}",
+  overleafCitationFormat: "\\cite{{bibtex_key}}",
   showAbstracts: false,
 };
 

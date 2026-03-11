@@ -16,6 +16,7 @@ from incite.cli.setup import (
 )
 from incite.models import Paper
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -236,7 +237,9 @@ class TestCmdSetup:
     @patch("incite.cli.setup._build_index")
     @patch("incite.cli.setup._load_papers")
     @patch("incite.corpus.zotero_reader.find_zotero_data_dir")
-    def test_noninteractive_zotero(self, mock_find, mock_load, mock_build, mock_test, mock_save):
+    def test_noninteractive_zotero(
+        self, mock_find, mock_load, mock_build, mock_test, mock_save
+    ):
         mock_find.return_value = Path("/Users/test/Zotero")
         papers = _make_papers(10)
         mock_load.return_value = papers
@@ -259,7 +262,9 @@ class TestCmdSetup:
     @patch("incite.cli.setup._test_query")
     @patch("incite.cli.setup._build_index")
     @patch("incite.cli.setup._load_papers")
-    def test_noninteractive_folder(self, mock_load, mock_build, mock_test, mock_save, tmp_path):
+    def test_noninteractive_folder(
+        self, mock_load, mock_build, mock_test, mock_save, tmp_path
+    ):
         (tmp_path / "paper.pdf").write_bytes(b"%PDF fake")
         papers = _make_papers(3)
         mock_load.return_value = papers
