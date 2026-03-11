@@ -29,6 +29,14 @@ export type { CitationStyle } from "./format";
 export { CitationTracker, recommendationToTracked } from "./citation-tracker";
 export type { TrackedCitation, CitationStorage } from "./citation-tracker";
 export { exportBibTeX, exportRIS, exportFormattedText, escapeLaTeX } from "./bibliography";
+export {
+	findBibliographySection,
+	scanForOrphans,
+	scanForUntracked,
+	formatBibliographyContent,
+	getBodyText,
+} from "./bibliography-sync";
+export type { BibliographySection, UntrackedCitation } from "./bibliography-sync";
 
 export type {
 	CSLStyle,

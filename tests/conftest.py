@@ -1,9 +1,13 @@
 """Shared pytest configuration and fixtures."""
 
+from __future__ import annotations
+
 import hashlib
+import os
 
 import numpy as np
 import pytest
+import requests
 
 from incite.embeddings.base import BaseEmbedder
 from incite.models import Chunk, Paper
@@ -57,6 +61,100 @@ def api_headers(api_key):
 def invite_code(request):
     """Invite code for signup during e2e tests."""
     return request.config.getoption("--invite-code")
+
+
+# ---------------------------------------------------------------------------
+# E2E shared fixtures — authenticated sessions, CSRF helpers, API tokens
+# ---------------------------------------------------------------------------
+
+
+def _e2e_base_url(request) -> str:
+    """Get the base URL, stripping trailing slash."""
+    return request.config.getoption("--api-url").rstrip("/")
+
+
+def _e2e_login(
+    base_url: str, email: str, password: str
+) -> requests.Session:
+    """Create an authenticated requests.Session against the live server."""
+    s = requests.Session()
+    s.headers.update({"User-Agent": "incite-e2e-test/1.0"})
+
+    # Get CSRF token from login page
+    s.get(f"{base_url}/web/login")
+    csrf_token = s.cookies.get("csrf_token", "")
+
+    resp = s.post(
+        f"{base_url}/web/login",
+        data={
+            "email": email,
+            "password": password,
+            "csrf_token": csrf_token,
+        },
+        headers={"X-CSRF-Token": csrf_token},
+        allow_redirects=False,
+    )
+    if resp.status_code != 303:
+        pytest.fail(f"Login failed ({resp.status_code}): {resp.text[:500]}")
+
+    return s
+
+
+def e2e_csrf(session: requests.Session) -> dict[str, str]:
+    """Return headers dict with CSRF token for POST/PUT/DELETE requests."""
+    token = session.cookies.get("csrf_token", "")
+    return {"X-CSRF-Token": token}
+
+
+def e2e_csrf_data(session: requests.Session) -> dict[str, str]:
+    """Return form data dict with CSRF token for form submissions."""
+    return {"csrf_token": session.cookies.get("csrf_token", "")}
+
+
+@pytest.fixture(scope="module")
+def e2e_base_url(request) -> str:
+    """Base URL for e2e tests."""
+    return _e2e_base_url(request)
+
+
+@pytest.fixture(scope="module")
+def e2e_credentials() -> dict[str, str]:
+    """Primary test account credentials."""
+    email = os.environ.get("CLOUD_TEST_EMAIL", "cloudtest@inciteref.com")
+    password = os.environ.get("CLOUD_TEST_PASSWORD", "")
+    if not password:
+        pytest.skip("CLOUD_TEST_PASSWORD not set")
+    return {"email": email, "password": password}
+
+
+@pytest.fixture(scope="module")
+def e2e_session(e2e_base_url, e2e_credentials) -> requests.Session:
+    """Authenticated session for primary test account."""
+    return _e2e_login(
+        e2e_base_url,
+        e2e_credentials["email"],
+        e2e_credentials["password"],
+    )
+
+
+@pytest.fixture(scope="module")
+def e2e_credentials_b() -> dict[str, str]:
+    """Second test account credentials (for multi-account isolation tests)."""
+    email = os.environ.get("CLOUD_TEST_EMAIL_B", "cloudtest-b@inciteref.com")
+    password = os.environ.get("CLOUD_TEST_PASSWORD_B", "")
+    if not password:
+        pytest.skip("CLOUD_TEST_PASSWORD_B not set")
+    return {"email": email, "password": password}
+
+
+@pytest.fixture(scope="module")
+def e2e_session_b(e2e_base_url, e2e_credentials_b) -> requests.Session:
+    """Authenticated session for second test account."""
+    return _e2e_login(
+        e2e_base_url,
+        e2e_credentials_b["email"],
+        e2e_credentials_b["password"],
+    )
 
 
 # ---------------------------------------------------------------------------

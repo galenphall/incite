@@ -10,7 +10,7 @@ const CITATION_PRESETS: Record<string, string> = {
   mla: "({first_author})",
   harvard: "({first_author} {year})",
   bibtex: "[@{bibtex_key}]",
-  latex: "\\cite{{{bibtex_key}}}",
+  latex: "\\cite{{bibtex_key}}",
 };
 
 // --- DOM references ---

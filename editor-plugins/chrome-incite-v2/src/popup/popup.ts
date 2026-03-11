@@ -33,8 +33,8 @@ interface LibraryCheckResult {
   title?: string;
   in_library: boolean;
   canonical_id?: string | null;
-  collections?: string[];
-  tags?: string[];
+  collections?: Array<{ id: string; name: string }>;
+  tags?: Array<{ id: string; name: string }>;
 }
 
 // --- State ---
@@ -108,7 +108,7 @@ const root = document.getElementById("popup-root")!;
         state = { kind: "already-saved", paper: papers[0], check };
         // Pre-populate tags from the existing library item
         if (check.tags?.length) {
-          selectedTags = [...check.tags];
+          selectedTags = check.tags.map((t) => t.name);
           showTagInput = true;
         }
       } else {
@@ -338,10 +338,10 @@ function renderMultiPaper(papers: PaperMetadata[], checks: LibraryCheckResult[])
 
 function renderAlreadySaved(paper: PaperMetadata, check: LibraryCheckResult): string {
   const collectionStr = check.collections?.length
-    ? `In: ${check.collections.join(", ")}`
+    ? `In: ${check.collections.map((c) => c.name).join(", ")}`
     : "";
   const tagStr = check.tags?.length
-    ? `Tags: ${check.tags.join(", ")}`
+    ? `Tags: ${check.tags.map((t) => t.name).join(", ")}`
     : "";
 
   const url = settings.cloudUrl || "https://inciteref.com";

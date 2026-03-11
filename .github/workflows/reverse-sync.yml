@@ -3,9 +3,12 @@ name: Reverse Sync to Private
 on:
   push:
     branches: [main]
+  # Only meaningful on the public repo — skip when running on private repo
+  # (PRIVATE_REPO_PAT is only configured on galenphall/incite)
 
 jobs:
   reverse-sync:
+    if: github.repository == 'galenphall/incite'
     runs-on: ubuntu-latest
 
     steps:

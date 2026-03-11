@@ -169,8 +169,8 @@ export interface LibraryCheckResult {
 	title?: string;
 	in_library: boolean;
 	canonical_id?: string | null;
-	collections?: string[];
-	tags?: string[];
+	collections?: Array<{ id: string; name: string }>;
+	tags?: Array<{ id: string; name: string }>;
 }
 
 /** A library collection. */

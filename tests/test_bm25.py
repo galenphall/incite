@@ -3,7 +3,7 @@
 import pytest
 
 from incite.models import Paper, RetrievalResult
-from incite.retrieval.bm25 import BM25Retriever, tokenize_with_stopwords
+from incite.retrieval.bm25 import BM25Retriever, tokenize_with_stopwords, STOPWORDS
 
 
 class TestTokenization:
@@ -71,21 +71,9 @@ class TestBM25Retriever:
     @pytest.fixture
     def papers(self):
         return [
-            Paper(
-                id="p1",
-                title="Sea level rise projections",
-                abstract="Global sea levels are rising due to climate change",
-            ),
-            Paper(
-                id="p2",
-                title="Deep learning for NLP",
-                abstract="Neural networks for natural language processing",
-            ),
-            Paper(
-                id="p3",
-                title="Ocean temperature trends",
-                abstract="Sea surface temperatures and oceanic heat content",
-            ),
+            Paper(id="p1", title="Sea level rise projections", abstract="Global sea levels are rising due to climate change"),
+            Paper(id="p2", title="Deep learning for NLP", abstract="Neural networks for natural language processing"),
+            Paper(id="p3", title="Ocean temperature trends", abstract="Sea surface temperatures and oceanic heat content"),
         ]
 
     @pytest.fixture
