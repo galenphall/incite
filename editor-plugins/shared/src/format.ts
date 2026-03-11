@@ -81,6 +81,32 @@ export function formatMultiCitation(
 			return `[@${keys.join("; @")}]`;
 		}
 		case "individual": {
+			// Markdown link detection: [<text>](<url>)
+			const mdMatch = template.match(/^\[(.+)\]\((.+)\)$/);
+			if (mdMatch) {
+				const textTemplate = mdMatch[1];
+				const urlTemplate = mdMatch[2];
+				const delimPairs: [string, string][] = [["(", ")"], ["[", "]"]];
+				const textDelim = delimPairs.find(
+					([open, close]) =>
+						textTemplate.startsWith(open) &&
+						textTemplate.endsWith(close)
+				);
+				const links = recs.map((r) => {
+					const url = formatCitation(r, urlTemplate);
+					const fullText = formatCitation(r, textTemplate);
+					const linkText = textDelim
+						? fullText.slice(1, -1)
+						: fullText;
+					return `[${linkText}](${url})`;
+				});
+				if (textDelim) {
+					const [open, close] = textDelim;
+					return `${open}${links.join(separator)}${close}`;
+				}
+				return links.join(separator);
+			}
+
 			const formatted = recs.map((r) => formatCitation(r, template));
 			const first = formatted[0];
 			const delimPairs: [string, string][] = [["(", ")"], ["[", "]"]];

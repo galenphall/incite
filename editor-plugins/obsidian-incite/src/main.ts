@@ -6,6 +6,7 @@ import { FrontmatterCitationStorage } from "./frontmatter-citation-storage";
 import { extractContext } from "./context-extractor";
 import { InCiteSettingTab } from "./settings";
 import { InCiteSidebarView, VIEW_TYPE_INCITE } from "./sidebar-view";
+import { updateBibliography, reconcile } from "./bibliography-sync";
 import type { InCiteSettings, Recommendation } from "./types";
 import {
 	DEFAULT_SETTINGS,
@@ -28,6 +29,8 @@ export default class InCitePlugin extends Plugin {
 	private watcher: CitationWatcher | null = null;
 	private lastEditor: Editor | null = null;
 	private tracker: CitationTracker | null = null;
+	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+	private static RECONCILE_DEBOUNCE_MS = 3000;
 	private citationStorage: FrontmatterCitationStorage | null = null;
 	private legacyStorage: ObsidianCitationStorage | null = null;
 
@@ -72,6 +75,13 @@ export default class InCitePlugin extends Plugin {
 		});
 		await this.initTrackerForActiveFile();
 
+		// Debounced bibliography reconciliation on editor changes
+		this.registerEvent(
+			this.app.workspace.on("editor-change", () => {
+				this.scheduleReconcile();
+			})
+		);
+
 		// Start citation watcher
 		if (this.settings.autoDetectEnabled) {
 			this.startWatcher();
@@ -88,6 +98,10 @@ export default class InCitePlugin extends Plugin {
 
 	onunload(): void {
 		this.stopWatcher();
+		if (this.reconcileTimer) {
+			clearTimeout(this.reconcileTimer);
+			this.reconcileTimer = null;
+		}
 	}
 
 	async loadSettings(): Promise<void> {
@@ -157,6 +171,18 @@ export default class InCitePlugin extends Plugin {
 		this.refreshBibliography();
 	}
 
+	/** Schedule a debounced bibliography reconciliation. */
+	private scheduleReconcile(): void {
+		if (this.reconcileTimer) clearTimeout(this.reconcileTimer);
+		this.reconcileTimer = setTimeout(async () => {
+			this.reconcileTimer = null;
+			const editor = this.app.workspace.activeEditor?.editor ?? null;
+			if (!editor || !this.tracker) return;
+			const changed = await reconcile(editor, this.tracker);
+			if (changed) this.refreshBibliography();
+		}, InCitePlugin.RECONCILE_DEBOUNCE_MS);
+	}
+
 	/** Push current tracked citations to the sidebar view. */
 	private refreshBibliography(): void {
 		const view = this.getSidebarView();
@@ -174,6 +200,8 @@ export default class InCitePlugin extends Plugin {
 		if (!this.tracker) return;
 		await this.tracker.remove(paperId);
 		this.refreshBibliography();
+		const editor = this.lastEditor ?? this.app.workspace.activeEditor?.editor ?? null;
+		if (editor && this.tracker) updateBibliography(editor, this.tracker);
 	}
 
 	/** Export bibliography in the given format and copy to clipboard. */
@@ -206,7 +234,7 @@ export default class InCitePlugin extends Plugin {
 		});
 	}
 
-	/** Insert APA-formatted bibliography at the current cursor position. */
+	/** Insert or update the bibliography section in the document. */
 	private insertBibliography(): void {
 		const editor = this.lastEditor ?? this.app.workspace.activeEditor?.editor ?? null;
 		if (!editor) {
@@ -218,14 +246,8 @@ export default class InCitePlugin extends Plugin {
 			return;
 		}
 
-		const text = exportFormattedText(this.tracker.getAll());
-		const cursor = editor.getCursor();
-		editor.replaceRange(text, cursor);
-
-		const newOffset = editor.posToOffset(cursor) + text.length;
-		editor.setCursor(editor.offsetToPos(newOffset));
-
-		new Notice(`Inserted bibliography (${this.tracker.count} citations).`);
+		updateBibliography(editor, this.tracker);
+		new Notice(`Updated bibliography (${this.tracker.count} citations).`);
 	}
 
 	/** Fetch collections from cloud and update sidebar dropdown. */
@@ -374,9 +396,13 @@ export default class InCitePlugin extends Plugin {
 		const newOffset = editor.posToOffset(cursor) + citation.length;
 		editor.setCursor(editor.offsetToPos(newOffset));
 
-		// Track the citation
+		// Track the citation and update bibliography
 		if (this.tracker) {
-			this.tracker.track([rec]).then(() => this.refreshBibliography());
+			this.tracker.track([rec], citation).then(() => {
+				this.refreshBibliography();
+				const ed = this.lastEditor ?? this.app.workspace.activeEditor?.editor ?? null;
+				if (ed && this.tracker) updateBibliography(ed, this.tracker);
+			});
 		}
 
 		new Notice(`Inserted: ${citation}`);
@@ -397,9 +423,13 @@ export default class InCitePlugin extends Plugin {
 		const newOffset = editor.posToOffset(cursor) + citation.length;
 		editor.setCursor(editor.offsetToPos(newOffset));
 
-		// Track all citations
+		// Track all citations and update bibliography
 		if (this.tracker) {
-			this.tracker.track(recs).then(() => this.refreshBibliography());
+			this.tracker.track(recs).then(() => {
+				this.refreshBibliography();
+				const ed = this.lastEditor ?? this.app.workspace.activeEditor?.editor ?? null;
+				if (ed && this.tracker) updateBibliography(ed, this.tracker);
+			});
 		}
 
 		new Notice(`Inserted ${recs.length} citations.`);

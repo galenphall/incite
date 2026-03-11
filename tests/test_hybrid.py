@@ -12,26 +12,10 @@ class TestHybridRetriever:
     @pytest.fixture
     def papers(self):
         return [
-            Paper(
-                id="p1",
-                title="Sea level rise projections",
-                abstract="Global sea levels are rising due to climate change and thermal expansion",
-            ),
-            Paper(
-                id="p2",
-                title="Deep learning for NLP",
-                abstract="Neural networks for natural language processing tasks",
-            ),
-            Paper(
-                id="p3",
-                title="Ocean temperature trends",
-                abstract="Sea surface temperatures and oceanic heat content increasing",
-            ),
-            Paper(
-                id="p4",
-                title="Climate modeling techniques",
-                abstract="General circulation models for climate projections and scenarios",
-            ),
+            Paper(id="p1", title="Sea level rise projections", abstract="Global sea levels are rising due to climate change and thermal expansion"),
+            Paper(id="p2", title="Deep learning for NLP", abstract="Neural networks for natural language processing tasks"),
+            Paper(id="p3", title="Ocean temperature trends", abstract="Sea surface temperatures and oceanic heat content increasing"),
+            Paper(id="p4", title="Climate modeling techniques", abstract="General circulation models for climate projections and scenarios"),
         ]
 
     @pytest.fixture
@@ -59,7 +43,9 @@ class TestHybridRetriever:
             assert result.rank == i + 1
 
     def test_return_timing(self, hybrid_retriever):
-        results, timing = hybrid_retriever.retrieve("sea level", k=3, return_timing=True)
+        results, timing = hybrid_retriever.retrieve(
+            "sea level", k=3, return_timing=True
+        )
         assert isinstance(results, list)
         assert isinstance(timing, dict)
         assert "fusion_ms" in timing
@@ -118,7 +104,9 @@ class TestHybridRetriever:
             fusion="rrf",
             rrf_k=5,
         )
-        results = hybrid.retrieve("sea level", k=3, papers=paper_dict, deduplicate=True)
+        results = hybrid.retrieve(
+            "sea level", k=3, papers=paper_dict, deduplicate=True
+        )
         titles = [paper_dict[r.paper_id].title for r in results]
         # After dedup, "Sea level rise" should appear at most once
         assert titles.count("Sea level rise") <= 1
@@ -132,12 +120,8 @@ class TestHybridRetriever:
             rrf_k=5,
         )
         # Query mentions "Smith" who authored p1 and p4
-        results_no_boost = hybrid.retrieve(
-            "Smith sea level", k=4, papers=paper_dict, author_boost=1.0
-        )
-        results_boosted = hybrid.retrieve(
-            "Smith sea level", k=4, papers=paper_dict, author_boost=2.0
-        )
+        results_no_boost = hybrid.retrieve("Smith sea level", k=4, papers=paper_dict, author_boost=1.0)
+        results_boosted = hybrid.retrieve("Smith sea level", k=4, papers=paper_dict, author_boost=2.0)
         # Smith papers should have higher scores with boost
         smith_ids = {"p1", "p4"}
         for r in results_boosted:
