@@ -453,6 +453,69 @@ body {
   color: var(--fg-muted);
 }
 
+/* Likely saved state (fuzzy match) */
+.likely-saved {
+  background: #fef8e8;
+  border: 1px solid #d4a017;
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .likely-saved {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: #b8860b;
+  }
+}
+
+.likely-saved-comparison {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin-bottom: 6px;
+}
+
+.likely-saved-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.likely-saved-value {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--fg);
+}
+
+.likely-saved-detail {
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 2px;
+}
+
+/* Multi-paper fuzzy match badge */
+.multi-paper-badge.likely {
+  color: #d4a017;
+}
+
+@media (prefers-color-scheme: dark) {
+  .multi-paper-badge.likely {
+    color: #f59e0b;
+  }
+}
+
+.multi-paper-item.fuzzy-match {
+  border-color: #d4a01740;
+}
+
+.multi-paper-item.fuzzy-match:hover {
+  border-color: #d4a017;
+}
+
 /* Error state */
 .error-state {
   text-align: center;

@@ -276,7 +276,9 @@ export class InCiteSidebarView extends ItemView {
 						this.renderHighlightedText(rec.matched_paragraph, blockquote, 350);
 					}
 
-					toggleBtn.addEventListener("click", () => {
+					toggleBtn.addEventListener("mousedown", (e) => {
+						if (e.button !== 0) return;
+						e.preventDefault();
 						const expanded = evidenceWrap.classList.toggle("expanded");
 						toggleBtn.textContent = expanded ? "Hide evidence \u25B4" : "Show evidence \u25BE";
 					});
@@ -290,7 +292,9 @@ export class InCiteSidebarView extends ItemView {
 				text: "Insert",
 			});
 			setIcon(insertBtn.createSpan({ cls: "mayacite-insert-icon" }), "plus");
-			insertBtn.addEventListener("click", () => {
+			insertBtn.addEventListener("mousedown", (e) => {
+				if (e.button !== 0) return;
+				e.preventDefault();
 				this.onInsert(rec);
 			});
 
@@ -323,7 +327,9 @@ export class InCiteSidebarView extends ItemView {
 			cls: "mayacite-insert-btn",
 			text: "Insert Selected",
 		});
-		insertBtn.addEventListener("click", () => {
+		insertBtn.addEventListener("mousedown", (e) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
 			const recs = Array.from(this.selectedRecs.values());
 			if (recs.length > 0) {
 				this.onInsertMulti(recs);
@@ -336,7 +342,9 @@ export class InCiteSidebarView extends ItemView {
 			cls: "mayacite-clear-btn",
 			text: "Clear",
 		});
-		clearBtn.addEventListener("click", () => {
+		clearBtn.addEventListener("mousedown", (e) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
 			this.selectedRecs.clear();
 			this.render();
 		});
@@ -374,7 +382,9 @@ export class InCiteSidebarView extends ItemView {
 			text: `Bibliography (${this.trackedCitations.length} citations)`,
 		});
 
-		header.addEventListener("click", () => {
+		header.addEventListener("mousedown", (e) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
 			this.bibExpanded = !this.bibExpanded;
 			this.render();
 		});
@@ -389,7 +399,9 @@ export class InCiteSidebarView extends ItemView {
 					cls: "mayacite-export-btn",
 					text: fmt,
 				});
-				btn.addEventListener("click", () => {
+				btn.addEventListener("mousedown", (e) => {
+					if (e.button !== 0) return;
+					e.preventDefault();
 					this.onExportBibliography!(fmt.toLowerCase());
 				});
 			}
@@ -398,7 +410,9 @@ export class InCiteSidebarView extends ItemView {
 					cls: "mayacite-export-btn",
 					text: "Insert",
 				});
-				insertBtn.addEventListener("click", () => {
+				insertBtn.addEventListener("mousedown", (e) => {
+					if (e.button !== 0) return;
+					e.preventDefault();
 					this.onInsertBibliography!();
 				});
 			}
@@ -437,7 +451,9 @@ export class InCiteSidebarView extends ItemView {
 					attr: { title: "Remove from bibliography" },
 				});
 				setIcon(removeBtn, "x");
-				removeBtn.addEventListener("click", () => {
+				removeBtn.addEventListener("mousedown", (e) => {
+					if (e.button !== 0) return;
+					e.preventDefault();
 					this.onRemoveCitation!(cite.paper_id);
 				});
 			}
