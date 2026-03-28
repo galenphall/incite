@@ -15,8 +15,17 @@ from typing import Optional
 from incite.corpus.loader import load_corpus, save_corpus
 from incite.corpus.pdf_extractor import extract_pdf_text
 from incite.models import Paper
+from incite.utils.dependencies import try_import_pymupdf
 
 logger = logging.getLogger(__name__)
+
+# Check PyMuPDF availability once at module load
+_FITZ_AVAILABLE = try_import_pymupdf() is not None
+if not _FITZ_AVAILABLE:
+    logger.warning(
+        "PyMuPDF (fitz) is not installed. PDF metadata extraction will be limited. "
+        "Install with: pip install pymupdf"
+    )
 
 
 def _scan_folder_pdfs(folder: Path) -> list[Path]:
@@ -81,10 +90,14 @@ def _extract_largest_font_text(pdf_path: Path) -> Optional[str]:
     Returns:
         The largest-font text block on page 1, or None.
     """
-    try:
-        import fitz
-    except ImportError:
+    if not _FITZ_AVAILABLE:
+        logger.debug(
+            "Skipping PDF text extraction for %s: PyMuPDF not installed",
+            pdf_path.name,
+        )
         return None
+
+    fitz = try_import_pymupdf()  # Will succeed since _FITZ_AVAILABLE is True
 
     try:
         doc = fitz.open(pdf_path)
@@ -158,14 +171,19 @@ def extract_pdf_metadata(pdf_path: Path) -> dict:
     Returns a dict with keys: title, authors, year.
     Falls back to filename-based extraction when metadata is missing.
     """
-    try:
-        import fitz
-    except ImportError:
+    if not _FITZ_AVAILABLE:
+        logger.debug(
+            "Using filename-based metadata for %s: PyMuPDF not installed. "
+            "Install PyMuPDF for better metadata extraction: pip install pymupdf",
+            pdf_path.name,
+        )
         return {
             "title": _clean_filename_title(pdf_path.name),
             "authors": [],
             "year": _extract_year_from_filename(pdf_path.name),
         }
+
+    fitz = try_import_pymupdf()  # Will succeed since _FITZ_AVAILABLE is True
 
     title = None
     authors = []
