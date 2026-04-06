@@ -1,4 +1,9 @@
-"""Shared batch API polling utilities."""
+"""Shared polling utilities for Anthropic Message Batches API.
+
+Used by llm_enrichment.py and query_reformulation.py to wait for batch
+jobs to finish. Batches are typically cheaper (50% input token discount)
+than streaming requests for large-scale enrichment runs.
+"""
 
 import time
 

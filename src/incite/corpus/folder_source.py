@@ -3,6 +3,18 @@
 Enables users who don't use Zotero to point inCite at any folder of PDFs.
 PDFs are scanned recursively, metadata is extracted via PyMuPDF, and full text
 is extracted using the existing pdf_extractor module.
+
+Key class:
+    FolderCorpusSource: CorpusSource implementation with incremental caching
+
+Key functions:
+    extract_pdf_metadata: Lightweight metadata extraction via PyMuPDF
+    find_paperpile_pdfs: (used internally) scan folder for PDFs
+
+Related modules:
+    corpus/pdf_extractor.py — full-text extraction used by _process_pdf
+    corpus/paperpile_source.py — similar pattern for Paperpile libraries
+    api.py — INCITE_SOURCE=folder creates a FolderCorpusSource
 """
 
 import hashlib
