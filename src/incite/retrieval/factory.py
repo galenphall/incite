@@ -1,17 +1,44 @@
-"""Factory functions for creating retrievers.
+"""Factory functions for creating retrievers and indexes.
 
-This module provides the plug-and-chug entry point for creating retrievers.
-As the pipeline evolves (new embedders, better fusion methods), update this
-module and all consumers automatically benefit.
+This module is the plug-and-chug entry point for building retrievers.
+As the pipeline evolves (new embedders, better fusion methods), update
+this module and all consumers automatically benefit.
+
+Embedder and chunking registries live in factory_registry.py. This module
+imports them so that external code doing
+    from incite.retrieval.factory import EMBEDDERS
+continues to work without modification.
+
+Key public API:
+    create_retriever()       — Build a paper-level retriever (neural/BM25/hybrid)
+    build_index()            — Build and persist a FAISS paper index
+    create_two_stage_retriever() — Paper-level hybrid + paragraph reranking
+    create_paragraph_retriever() — Chunk/paragraph-level retriever
+    build_chunk_index()      — Build and persist a chunk FAISS index
+    create_multi_scale_retriever() — Load pre-built multi-scale indexes
+    build_multi_scale_index() — Build paper + paragraph + sentence indexes
+
+Registry access (re-exported from factory_registry for backward compat):
+    EMBEDDERS, DEFAULT_EMBEDDER, get_embedder(), get_available_embedders()
+    CHUNKING_STRATEGIES, DEFAULT_CHUNKING, get_chunker(), get_storage_key()
 """
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
-from incite.embeddings.base import BaseEmbedder
 from incite.interfaces import Retriever
 from incite.models import Chunk, Paper
+from incite.retrieval.factory_registry import (
+    CHUNKING_STRATEGIES,
+    DEFAULT_CHUNKING,
+    DEFAULT_EMBEDDER,
+    EMBEDDERS,
+    get_available_embedders,
+    get_chunker,
+    get_embedder,
+    get_storage_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,220 +46,26 @@ if TYPE_CHECKING:
     from incite.embeddings.chunk_store import ChunkStore
     from incite.retrieval.two_stage import TwoStageRetriever
 
-# Available embedder configurations
-# Add new embedders here as they become available
-EMBEDDERS = {
-    "minilm": {
-        "name": "MiniLM (fast, recommended)",
-        "class": "MiniLMEmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "e5": {
-        "name": "E5-small (good quality, fast)",
-        "class": "E5Embedder",
-        "module": "incite.embeddings.specter",
-    },
-    "specter": {
-        "name": "SPECTER2 (scientific, slower)",
-        "class": "SPECTEREmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "nomic": {
-        "name": "Nomic Embed v1.5 (768d, 8K context)",
-        "class": "NomicEmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "voyage": {
-        "name": "Voyage AI voyage-4 (API, 1024d)",
-        "class": "VoyageEmbedder",
-        "module": "incite.embeddings.voyage",
-    },
-    "minilm-ft": {
-        "name": "MiniLM fine-tuned v4 (citation-specific, Matryoshka)",
-        "class": "FineTunedMiniLMEmbedder",
-        "module": "incite.embeddings.finetuned",
-        "model": "galenphall/minilm-citation-v4",
-    },
-    "minilm-ft-onnx": {
-        "name": "MiniLM fine-tuned v4 ONNX (fast CPU inference)",
-        "class": "OnnxMiniLMEmbedder",
-        "module": "incite.embeddings.finetuned",
-    },
-    "modernbert": {
-        "name": "ModernBERT-embed-base (768d, 8K context)",
-        "class": "ModernBERTEmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "scincl": {
-        "name": "SciNCL (citation-graph trained, 768d)",
-        "class": "SciNCLEmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "granite": {
-        "name": "Granite-small-R2 base (384d, 8K context)",
-        "class": "GraniteEmbedder",
-        "module": "incite.embeddings.specter",
-    },
-    "granite-ft": {
-        "name": "Granite-small-R2 fine-tuned v6b (384d, Matryoshka)",
-        "class": "FineTunedGraniteEmbedder",
-        "module": "incite.embeddings.finetuned",
-        "model": "models/granite-citation-v6/final",
-        "cloud_only": True,
-    },
-    "granite-ft-onnx": {
-        "name": "Granite-small-R2 fine-tuned v6b ONNX (fast CPU inference)",
-        "class": "OnnxGraniteEmbedder",
-        "module": "incite.embeddings.finetuned",
-        "model": "models/granite-citation-v6/onnx",
-        "storage_key": "granite-ft",  # ONNX produces identical embeddings; share index
-        "cloud_only": True,
-    },
-}
-
-DEFAULT_EMBEDDER = "minilm"  # Current best performer with hybrid
-
-
-def get_storage_key(embedder_type: str) -> str:
-    """Return the storage key for an embedder type.
-
-    ONNX variants produce identical embeddings to their PyTorch counterparts,
-    so they share the same storage namespace (FAISS index dir, pgvector rows).
-    """
-    config = EMBEDDERS.get(embedder_type, {})
-    return config.get("storage_key", embedder_type)
-
-
-def get_available_embedders() -> dict[str, dict]:
-    """Return embedders available for local use (excludes cloud-only models without local files)."""
-    available = {}
-    for key, config in EMBEDDERS.items():
-        if config.get("cloud_only") and "model" in config:
-            if not Path(config["model"]).exists():
-                continue
-        available[key] = config
-    return available
-
-
-# Available chunking strategies
-# Add new strategies here (semantic chunking, late chunking, etc.)
-CHUNKING_STRATEGIES = {
-    "paragraph": {
-        "name": "Paragraph-based (default)",
-        "function": "chunk_papers",
-        "module": "incite.corpus.chunking",
-        "description": "Split on paragraph boundaries, detect headings",
-    },
-    "grobid": {
-        "name": "GROBID ML-based (requires Docker)",
-        "function": "chunk_papers_grobid",
-        "module": "incite.corpus.grobid_chunking",
-        "description": (
-            "ML-based structure detection via GROBID. "
-            "~90% accuracy, references extracted separately. "
-            "Requires: docker run -p 8070:8070 grobid/grobid:0.8.0"
-        ),
-    },
-    "sentence": {
-        "name": "Sentence-level (spaCy)",
-        "function": "chunk_papers_sentences",
-        "module": "incite.corpus.sentence_chunking",
-        "description": (
-            "Split on sentence boundaries with context injection. "
-            "Each chunk includes: title | section | previous sentence. "
-            "Finer granularity than paragraph (~7x more chunks)."
-        ),
-    },
-    # Future strategies can be added here:
-    # "semantic": {
-    #     "name": "Semantic chunking",
-    #     "function": "semantic_chunk_papers",
-    #     "module": "incite.corpus.semantic_chunking",
-    # },
-    # "late": {
-    #     "name": "Late chunking (embed full doc, pool to chunks)",
-    #     "function": "late_chunk_papers",
-    #     "module": "incite.corpus.late_chunking",
-    # },
-}
-
-DEFAULT_CHUNKING = "paragraph"
-
-
-def get_chunker(
-    strategy: str = DEFAULT_CHUNKING,
-) -> Callable[[list[Paper]], list[Chunk]]:
-    """Get a chunking function by strategy name.
-
-    Args:
-        strategy: Key from CHUNKING_STRATEGIES dict
-
-    Returns:
-        Callable that takes list[Paper] and returns list[Chunk]
-    """
-    if strategy not in CHUNKING_STRATEGIES:
-        raise ValueError(
-            f"Unknown chunking strategy: {strategy}. Available: {list(CHUNKING_STRATEGIES.keys())}"
-        )
-
-    config = CHUNKING_STRATEGIES[strategy]
-    module = __import__(config["module"], fromlist=[config["function"]])
-    return getattr(module, config["function"])
-
-
-_embedder_cache: dict[str, BaseEmbedder] = {}
-
-
-def get_embedder(embedder_type: str = DEFAULT_EMBEDDER) -> BaseEmbedder:
-    """Get a cached embedder instance by type.
-
-    Returns the same instance for repeated calls with the same embedder_type,
-    avoiding expensive model reloads.
-
-    Args:
-        embedder_type: Key from EMBEDDERS dict ("minilm", "specter", etc.)
-
-    Returns:
-        Configured embedder instance (cached)
-
-    Raises:
-        ValueError: If embedder_type is unknown or cloud-only without local model files.
-    """
-    # Auto-fallback: minilm-ft → minilm-ft-onnx if torch/sentence_transformers not available
-    if embedder_type == "minilm-ft":
-        try:
-            import sentence_transformers  # noqa: F401
-        except ImportError:
-            logger.info("sentence_transformers not available, falling back to minilm-ft-onnx")
-            embedder_type = "minilm-ft-onnx"
-
-    if embedder_type in _embedder_cache:
-        return _embedder_cache[embedder_type]
-
-    if embedder_type not in EMBEDDERS:
-        raise ValueError(f"Unknown embedder: {embedder_type}. Available: {list(EMBEDDERS.keys())}")
-
-    config = EMBEDDERS[embedder_type]
-
-    # Guard: cloud-only models require local model files
-    if config.get("cloud_only") and "model" in config:
-        model_path = Path(config["model"])
-        if not model_path.exists():
-            raise ValueError(
-                f"'{embedder_type}' requires model files that are not included in the "
-                f"open-source release. Use 'minilm-ft' instead (MRR 0.428), or subscribe "
-                f"to inCite Cloud at https://inciteref.com for access to Granite-FT "
-                f"(MRR 0.550, +28% better)."
-            )
-
-    module = __import__(config["module"], fromlist=[config["class"]])
-    embedder_class = getattr(module, config["class"])
-    kwargs = {}
-    if "model" in config:
-        kwargs["model_path"] = config["model"]
-    embedder = embedder_class(**kwargs)
-    _embedder_cache[embedder_type] = embedder
-    return embedder
+# Re-export registry names so existing callers of
+#   from incite.retrieval.factory import EMBEDDERS, get_embedder, ...
+# continue to work unchanged.
+__all__ = [
+    "CHUNKING_STRATEGIES",
+    "DEFAULT_CHUNKING",
+    "DEFAULT_EMBEDDER",
+    "EMBEDDERS",
+    "get_available_embedders",
+    "get_chunker",
+    "get_embedder",
+    "get_storage_key",
+    "create_retriever",
+    "build_index",
+    "create_two_stage_retriever",
+    "create_paragraph_retriever",
+    "build_chunk_index",
+    "create_multi_scale_retriever",
+    "build_multi_scale_index",
+]
 
 
 def create_retriever(

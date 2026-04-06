@@ -13,6 +13,7 @@ def _paper_to_dict(
     confidence: float | None = None,
     matched_paragraph: str | None = None,
 ) -> dict:
+    """Convert a Paper to a JSON-serializable dict."""
     d: dict = {
         "title": paper.title,
         "authors": paper.authors,
@@ -41,6 +42,7 @@ class JSONFormat:
         confidences: list[float] | None = None,
         matched_paragraphs: list[str | None] | None = None,
     ) -> str:
+        """Export multiple papers to JSON array format with optional confidence and evidence."""
         items = []
         for i, paper in enumerate(papers):
             conf = confidences[i] if confidences else None
@@ -54,6 +56,7 @@ class JSONFormat:
         confidence: float | None = None,
         matched_paragraph: str | None = None,
     ) -> str:
+        """Export a single paper to a JSON array (single-element) with optional metadata."""
         return json.dumps(
             [_paper_to_dict(paper, confidence, matched_paragraph)],
             indent=2,

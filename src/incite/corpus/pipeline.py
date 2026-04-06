@@ -9,6 +9,20 @@ Cloud pipeline: upload PDF → remote GROBID → download chunks → local embed
 Usage:
     pipeline = get_pipeline()  # auto-selects based on config
     chunks = pipeline.process_paper(paper)
+
+Key classes:
+    ProcessingPipeline: Abstract base class defining process_paper/process_batch/get_status
+    LocalPipeline: PyMuPDF + paragraph chunking (existing default path)
+    CloudPipeline: Upload to remote GROBID service, poll, download chunks
+
+Key function:
+    get_pipeline: Factory that reads ~/.incite/config.json to select local or cloud
+
+Related modules:
+    corpus/grobid.py — GROBID client used by the cloud service
+    corpus/chunking.py — chunk_paper() called by LocalPipeline
+    corpus/pdf_extractor.py — extract_pdf_text() called by LocalPipeline
+    api.py — /pipeline/status endpoint uses CloudPipeline.check_health()
 """
 
 import logging
@@ -154,6 +168,7 @@ class LocalPipeline(ProcessingPipeline):
         return all_chunks
 
     def get_status(self, paper_id: str) -> Optional[ProcessingStatus]:
+        """Return None; local processing is synchronous with no async status tracking."""
         # Local processing is synchronous — no status tracking
         return None
 
@@ -180,6 +195,7 @@ class CloudPipeline(ProcessingPipeline):
         self.timeout = timeout
 
     def _headers(self) -> dict:
+        """Build request headers including Authorization if api_key is set."""
         headers = {"Accept": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

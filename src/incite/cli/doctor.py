@@ -61,6 +61,7 @@ def cmd_doctor(args):
 
 
 def _check_python_version() -> tuple[bool, str]:
+    """Check that Python >= 3.10 is running."""
     v = sys.version_info
     ok = v >= (3, 10)
     version_str = f"{v.major}.{v.minor}.{v.micro}"
@@ -70,6 +71,7 @@ def _check_python_version() -> tuple[bool, str]:
 
 
 def _check_faiss() -> tuple[bool, str]:
+    """Check that FAISS is importable."""
     try:
         import faiss  # noqa: F401
 
@@ -79,6 +81,7 @@ def _check_faiss() -> tuple[bool, str]:
 
 
 def _check_torch_device() -> tuple[bool, str]:
+    """Check PyTorch installation and report the best available device."""
     try:
         from incite.utils import get_best_device
 
@@ -91,6 +94,7 @@ def _check_torch_device() -> tuple[bool, str]:
 
 
 def _check_zotero_db() -> tuple[bool, str]:
+    """Check that Zotero's SQLite database is present and readable."""
     try:
         from incite.webapp.state import get_config
 
@@ -130,6 +134,7 @@ def _check_zotero_db() -> tuple[bool, str]:
 
 
 def _check_config_embedder() -> tuple[bool, str]:
+    """Check that an embedder is configured in ~/.incite/config.json."""
     try:
         from incite.webapp.state import get_config
 
@@ -143,6 +148,7 @@ def _check_config_embedder() -> tuple[bool, str]:
 
 
 def _check_embedding_model() -> tuple[bool, str]:
+    """Check that the configured embedding model is available locally."""
     try:
         from incite.webapp.state import get_config
 
@@ -177,6 +183,7 @@ def _check_embedding_model() -> tuple[bool, str]:
 
 
 def _check_faiss_index() -> tuple[bool, str]:
+    """Check that a FAISS index has been built for the configured embedder."""
     try:
         from incite.webapp.state import get_cache_dir, get_config
 
@@ -210,6 +217,7 @@ def _check_faiss_index() -> tuple[bool, str]:
 
 
 def _check_chunk_cache() -> tuple[bool, str]:
+    """Check whether a paragraph chunk cache exists in ~/.incite/."""
     try:
         from incite.webapp.state import get_cache_dir
 
@@ -231,6 +239,7 @@ def _check_chunk_cache() -> tuple[bool, str]:
 
 
 def _check_api_server() -> tuple[bool, str]:
+    """Check if the local REST API server is running and healthy."""
     try:
         import requests
 
@@ -250,6 +259,7 @@ def _check_api_server() -> tuple[bool, str]:
 
 
 def _check_cloud_api() -> tuple[bool, str]:
+    """Check if the configured cloud API is reachable and healthy."""
     try:
         from incite.webapp.state import get_config
 
@@ -272,6 +282,7 @@ def _check_cloud_api() -> tuple[bool, str]:
 
 
 def _check_disk_space() -> tuple[bool, str]:
+    """Check that there is at least 1 GB of free disk space in the cache directory."""
     try:
         from incite.webapp.state import get_cache_dir
 

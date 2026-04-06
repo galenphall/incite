@@ -256,17 +256,21 @@ async function configureTabMode(tabId: number, url: string): Promise<void> {
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.url) return;
 
-  // Inject the configurable hotkey listener when a page finishes loading
-  if (changeInfo.status === "complete") {
-    await injectHotkeyListener(tabId);
-  }
+  try {
+    // Inject the configurable hotkey listener when a page finishes loading
+    if (changeInfo.status === "complete") {
+      await injectHotkeyListener(tabId);
+    }
 
-  await configureTabMode(tabId, tab.url);
+    await configureTabMode(tabId, tab.url);
 
-  // Clear cached detection when navigating away
-  if (changeInfo.url) {
-    detectedPapers.delete(tabId);
-    await chrome.action.setBadgeText({ tabId, text: "" });
+    // Clear cached detection when navigating away
+    if (changeInfo.url) {
+      detectedPapers.delete(tabId);
+      await chrome.action.setBadgeText({ tabId, text: "" });
+    }
+  } catch {
+    // Tab may have been closed between event and handler execution
   }
 });
 
