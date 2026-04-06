@@ -1,4 +1,28 @@
-"""Fine-tuned embedders for citation retrieval."""
+"""Fine-tuned embedders for citation retrieval.
+
+Provides four embedder implementations for citation-specific retrieval.
+All extend BaseEmbedder and use lazy model loading.
+
+Classes:
+    FineTunedMiniLMEmbedder: sentence-transformers MiniLM fine-tuned on citation pairs
+    FineTunedGraniteEmbedder: sentence-transformers Granite-small-R2 with query/passage prefixes
+    OnnxMiniLMEmbedder: ONNX-accelerated MiniLM (1.5-2x CPU speedup, mean pooling)
+    OnnxGraniteEmbedder: ONNX-accelerated Granite (2-3x CPU speedup, CLS pooling)
+
+Asymmetric prefixes (Granite only):
+    Queries: "query: {text}"
+    Documents: "passage: {text}"
+    MiniLM variants have no prefix (symmetric training).
+
+Default model paths:
+    MiniLM: models/minilm-citation-v4/final
+    Granite: models/granite-citation-v5/final (PyTorch) / granite-citation-v6/onnx (ONNX)
+
+Related modules:
+    embeddings/base.py — BaseEmbedder ABC implemented here
+    retrieval/factory.py — EMBEDDERS dict maps keys to these classes
+    embeddings/specter.py — non-fine-tuned embedder alternatives
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -18,6 +42,7 @@ class FineTunedMiniLMEmbedder(BaseEmbedder):
 
     Loads a locally fine-tuned sentence-transformers model from disk.
     Same interface as MiniLMEmbedder but trained on citation context → paper pairs.
+    Symmetric: no query/passage prefix distinction.
     """
 
     def __init__(
@@ -35,6 +60,7 @@ class FineTunedMiniLMEmbedder(BaseEmbedder):
 
     @property
     def device(self) -> str:
+        """Auto-detect best device (MPS > CUDA > CPU) on first access."""
         if self._requested_device is not None:
             return self._requested_device
         from incite.utils import get_best_device
@@ -43,6 +69,7 @@ class FineTunedMiniLMEmbedder(BaseEmbedder):
         return self._requested_device
 
     def _load_model(self):
+        """Lazily load the SentenceTransformer model from disk."""
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
@@ -61,11 +88,13 @@ class FineTunedMiniLMEmbedder(BaseEmbedder):
 
     @property
     def dimension(self) -> int:
+        """Embedding output dimension (triggers model load on first access)."""
         if self._dimension is None:
             self._load_model()
         return self._dimension
 
     def embed(self, texts: list[str], show_progress: bool = False) -> np.ndarray:
+        """Embed a list of texts; returns L2-normalized (N, dim) float32 array."""
         self._load_model()
 
         if len(texts) == 0:
@@ -102,6 +131,7 @@ class FineTunedGraniteEmbedder(BaseEmbedder):
 
     @property
     def device(self) -> str:
+        """Auto-detect best device (MPS > CUDA > CPU) on first access."""
         if self._requested_device is not None:
             return self._requested_device
         from incite.utils import get_best_device
@@ -110,6 +140,7 @@ class FineTunedGraniteEmbedder(BaseEmbedder):
         return self._requested_device
 
     def _load_model(self):
+        """Lazily load the Granite SentenceTransformer model; sets max_seq_length=512."""
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
@@ -129,6 +160,7 @@ class FineTunedGraniteEmbedder(BaseEmbedder):
 
     @property
     def dimension(self) -> int:
+        """Embedding output dimension (triggers model load on first access)."""
         if self._dimension is None:
             self._load_model()
         return self._dimension
@@ -210,6 +242,7 @@ class OnnxMiniLMEmbedder(BaseEmbedder):
         self._dimension: Optional[int] = None
 
     def _load_model(self):
+        """Lazily load the ONNX model and tokenizer; falls back to package-bundled model."""
         if self._model is not None:
             return
 
@@ -233,10 +266,11 @@ class OnnxMiniLMEmbedder(BaseEmbedder):
 
         self._tokenizer = AutoTokenizer.from_pretrained(str(path))
         self._model = ORTModelForFeatureExtraction.from_pretrained(str(path))
-        self._dimension = 384  # MiniLM-L6-v2 output dimension  # MiniLM-L6-v2 output dimension
+        self._dimension = 384  # MiniLM-L6-v2 output dimension
 
     @property
     def dimension(self) -> int:
+        """Embedding output dimension (triggers model load on first access)."""
         if self._dimension is None:
             self._load_model()
         return self._dimension
@@ -319,6 +353,7 @@ class OnnxGraniteEmbedder(BaseEmbedder):
         self._dimension: Optional[int] = None
 
     def _load_model(self):
+        """Lazily load the Granite ONNX model and tokenizer."""
         if self._model is not None:
             return
 
@@ -338,6 +373,7 @@ class OnnxGraniteEmbedder(BaseEmbedder):
 
     @property
     def dimension(self) -> int:
+        """Embedding output dimension (triggers model load on first access)."""
         if self._dimension is None:
             self._load_model()
         return self._dimension
@@ -351,7 +387,7 @@ class OnnxGraniteEmbedder(BaseEmbedder):
         return token_embeddings[:, 0, :]
 
     def _encode_batch(self, texts: list[str]) -> np.ndarray:
-        """Encode a batch of texts through the ONNX model."""
+        """Tokenize, run ONNX inference, apply CLS pooling, and L2-normalize."""
         encoded = self._tokenizer(
             texts,
             padding=True,

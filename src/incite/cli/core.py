@@ -1,4 +1,23 @@
-"""Core retrieval commands: index, recommend, index-chunks."""
+"""Core retrieval commands: index, recommend, index-chunks.
+
+Registers the three primary user-facing CLI commands and their handlers.
+
+Commands:
+    index: Build a FAISS vector index from a corpus JSONL file
+    recommend: Get citation recommendations for a text query
+    index-chunks: Build a FAISS chunk index from a chunks JSONL file
+
+Key functions:
+    register: Adds all three commands to a subparsers group
+    cmd_index: Builds paper-level or multi-scale indexes
+    cmd_recommend: Retrieves and prints top-k recommendations with timing
+    cmd_index_chunks: Embeds and indexes chunk JSONL for paragraph retrieval
+
+Related modules:
+    retrieval/factory.py — build_index, create_retriever, create_paragraph_retriever
+    agent.py — InCiteAgent used by cmd_recommend for two-stage mode
+    cli/agent.py — parallel agent interface for the same recommend/batch functionality
+"""
 
 import sys
 from pathlib import Path
@@ -14,6 +33,7 @@ def register(subparsers):
 
 
 def _register_index(subparsers):
+    """Add the 'index' subcommand to subparsers."""
     p = subparsers.add_parser("index", help="Build search index from corpus")
     p.add_argument(
         "--corpus",
@@ -43,6 +63,7 @@ def _register_index(subparsers):
 
 
 def _register_recommend(subparsers):
+    """Add the 'recommend' subcommand to subparsers."""
     p = subparsers.add_parser("recommend", help="Get citation recommendations")
     p.add_argument("query", type=str, help="Text to get citations for")
     p.add_argument("--top-k", "-k", type=int, default=10, help="Number of recommendations")
@@ -119,6 +140,7 @@ def _register_recommend(subparsers):
 
 
 def _register_index_chunks(subparsers):
+    """Add the 'index-chunks' subcommand to subparsers."""
     p = subparsers.add_parser("index-chunks", help="Build FAISS index from chunks")
     p.add_argument(
         "--chunks",
@@ -325,7 +347,12 @@ def cmd_recommend(args):
 
 
 def _try_attach_evidence(results, args, retriever, timing):
-    """Try to load chunk index and attach evidence snippets to paper-mode results."""
+    """Attach paragraph evidence snippets to paper-mode results when a chunk index exists.
+
+    Searches the chunk index for the query, then populates result.matched_paragraph
+    for any paper whose best chunk exceeds InCiteAgent.EVIDENCE_THRESHOLD.
+    No-ops silently if no chunk index is available.
+    """
     import time
 
     from incite.agent import InCiteAgent
@@ -392,7 +419,7 @@ def _try_attach_evidence(results, args, retriever, timing):
 
 
 def _find_embedder(retriever):
-    """Extract the neural embedder from a retriever chain."""
+    """Walk a retriever's attributes to find an embedded BaseEmbedder, or return None."""
     if hasattr(retriever, "embedder"):
         return retriever.embedder
     if hasattr(retriever, "retrievers"):

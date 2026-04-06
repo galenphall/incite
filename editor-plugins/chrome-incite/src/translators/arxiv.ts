@@ -1,0 +1,66 @@
+import type { Translator, PaperMetadata, DetectionResult } from "./types";
+import { extractStructuredText } from "./generic";
+import { getMeta, getAllMeta, extractYear } from "./utils";
+
+function extractArxivId(url: string): string | null {
+  // Matches: arxiv.org/abs/1706.03762 or arxiv.org/abs/2301.12345v2 or arxiv.org/pdf/1706.03762 or arxiv.org/html/1706.03762
+  const match = url.match(/arxiv\.org\/(?:abs|pdf|html)\/(\d{4}\.\d{4,5}(?:v\d+)?)/);
+  return match ? match[1] : null;
+}
+
+export const arxivTranslator: Translator = {
+  name: "arxiv",
+  urlPatterns: [/arxiv\.org\/(?:abs|pdf|html)\//],
+
+  detect(doc: Document): DetectionResult | null {
+    const arxivId = extractArxivId(doc.location.href);
+    const title = getMeta(doc, "citation_title");
+    return (arxivId || title) ? { type: "single" } : null;
+  },
+
+  extractSingle(doc: Document): PaperMetadata | null {
+    const title = getMeta(doc, "citation_title");
+    if (!title) return null;
+
+    const authors = getAllMeta(doc, "citation_author");
+    const doi = getMeta(doc, "citation_doi") ?? undefined;
+    const arxivId = extractArxivId(doc.location.href) ?? undefined;
+    const year = extractYear(getMeta(doc, "citation_date"));
+    const pdf_url = getMeta(doc, "citation_pdf_url") ?? undefined;
+
+    // arXiv abstracts are in the page content, not meta tags
+    let abstract: string | undefined;
+    const abstractBlock = doc.querySelector(".abstract");
+    if (abstractBlock) {
+      abstract = abstractBlock.textContent?.replace(/^Abstract:\s*/i, "").trim();
+    }
+
+    // On arxiv HTML pages (/html/), extract full text; on abs pages, skip (only abstract)
+    const isHtmlPage = doc.location.href.includes("/html/");
+    let full_text: string | undefined;
+    let structured_text: PaperMetadata["structured_text"];
+    if (isHtmlPage) {
+      const result = extractStructuredText(doc);
+      full_text = result.full_text ?? undefined;
+      structured_text = result.structured_text ?? undefined;
+    }
+
+    return {
+      title,
+      authors: authors.length ? authors : undefined,
+      year,
+      doi,
+      abstract,
+      journal: "arXiv",
+      url: doc.location.href,
+      arxiv_id: arxivId,
+      pdf_url,
+      full_text,
+      structured_text,
+    };
+  },
+
+  extractMultiple(_doc: Document): PaperMetadata[] {
+    return [];
+  },
+};

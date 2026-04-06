@@ -1,4 +1,25 @@
-"""Agent commands: agent {recommend, batch, stats, extract-pdfs}."""
+"""Agent commands: agent {recommend, batch, stats, extract-pdfs}.
+
+Provides a programmatic-friendly interface to InCiteAgent with JSON output support.
+All subcommands accept --json for machine-readable output.
+
+Commands (all under 'incite agent'):
+    recommend: Single-query recommendations with timing breakdown
+    batch: Multi-query recommendations read from a file
+    stats: Corpus statistics (paper count, field coverage)
+    extract-pdfs: PDF text extraction for paragraph mode
+
+Key functions:
+    register: Registers the 'agent' parent parser and all subcommands
+    cmd_agent: Dispatcher for agent subcommands
+    cmd_agent_recommend / cmd_agent_batch / cmd_agent_stats / cmd_agent_extract:
+        Individual command handlers
+
+Related modules:
+    agent.py — InCiteAgent used by all recommend/batch handlers
+    cli/core.py — overlapping functionality (non-agent recommend/index)
+    webapp/state.py — extract_and_save_pdfs used by cmd_agent_extract
+"""
 
 import sys
 from pathlib import Path
@@ -22,6 +43,7 @@ def register(subparsers):
 
 
 def _register_recommend(subparsers):
+    """Add the 'recommend' subcommand to agent subparsers."""
     p = subparsers.add_parser("recommend", help="Get recommendations with JSON output")
     p.add_argument("query", type=str, help="Text to get citations for")
     p.add_argument("--top-k", "-k", type=int, default=10, help="Number of recommendations")
@@ -75,6 +97,7 @@ def _register_recommend(subparsers):
 
 
 def _register_batch(subparsers):
+    """Add the 'batch' subcommand to agent subparsers."""
     p = subparsers.add_parser("batch", help="Batch recommendations from file")
     p.add_argument("queries_file", type=str, help="File with one query per line")
     p.add_argument(
@@ -112,6 +135,7 @@ def _register_batch(subparsers):
 
 
 def _register_stats(subparsers):
+    """Add the 'stats' subcommand to agent subparsers."""
     p = subparsers.add_parser("stats", help="Get corpus statistics")
     p.add_argument("--json", action="store_true", help="Output as JSON")
     p.add_argument(
@@ -123,6 +147,7 @@ def _register_stats(subparsers):
 
 
 def _register_extract(subparsers):
+    """Add the 'extract-pdfs' subcommand to agent subparsers."""
     p = subparsers.add_parser("extract-pdfs", help="Extract PDFs for paragraph mode")
     p.add_argument("--json", action="store_true", help="Output as JSON")
     p.add_argument(

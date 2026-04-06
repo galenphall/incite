@@ -1,4 +1,17 @@
-"""Base protocol and registry for citation export formats."""
+"""Base protocol and registry for citation export formats.
+
+Defines the ``ExportFormat`` Protocol that all export format classes must
+satisfy, and the ``FORMATS`` dict that acts as the global format registry.
+Format modules (bibtex.py, ris.py, etc.) register themselves by inserting
+into ``FORMATS`` at import time.
+
+Available formats (populated by submodules):
+- ``bibtex`` — BibTeX (.bib)
+- ``ris`` — RIS (.ris)
+- ``csv`` — Spreadsheet (.csv)
+- ``json`` — JSON array (.json)
+- ``apa``, ``mla``, ``chicago``, ``harvard`` — CSL-formatted plain text
+"""
 
 from __future__ import annotations
 
