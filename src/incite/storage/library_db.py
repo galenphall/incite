@@ -5,6 +5,31 @@ papers, chunks, and their embeddings as BLOBs. FAISS indexes are built
 in-memory from stored embeddings on startup.
 
 This avoids the JSONL + FAISS file sprawl and supports incremental updates.
+
+Database schema (SCHEMA_VERSION=1):
+    papers: id, title, abstract, authors (JSON), year, doi, journal,
+            source_file, zotero_uri, embedding (BLOB float32), embedding_text
+    chunks: id, paper_id (FK), text, section, char_offset, source,
+            context_text, embedding (BLOB float32), embedding_text
+
+Key class:
+    LibraryDB: All CRUD operations; connection is lazy and WAL-journaled
+
+Key methods:
+    upsert_papers / upsert_chunks: Idempotent inserts; returns IDs needing embedding
+    store_embeddings: Write float32 BLOBs for a batch of IDs
+    load_paper_embeddings / load_chunk_embeddings: Load all embeddings for FAISS rebuild
+    get_papers / get_chunks: Full-table fetches as model objects
+    needs_embedding: IDs with NULL embedding column
+    delete_chunks_for_papers: Remove chunks before re-chunking a paper
+
+Constants:
+    EMBEDDING_DIM: 384 (MiniLM / Granite-small-R2 output dimension)
+    SCHEMA_VERSION: 1 (bump triggers migration in _ensure_schema)
+
+Related modules:
+    agent.py — InCiteAgent.from_zotero() uses LibraryDB when use_sqlite=True
+    models.py — Paper and Chunk dataclasses stored/retrieved here
 """
 
 import json
@@ -76,6 +101,7 @@ class LibraryDB:
 
     @property
     def conn(self) -> sqlite3.Connection:
+        """Lazily open and return the SQLite connection (WAL mode, foreign keys on)."""
         if self._conn is None:
             self._conn = sqlite3.connect(str(self.db_path))
             self._conn.row_factory = sqlite3.Row
@@ -84,6 +110,7 @@ class LibraryDB:
         return self._conn
 
     def close(self):
+        """Close the database connection and reset to None."""
         if self._conn is not None:
             self._conn.close()
             self._conn = None
@@ -313,10 +340,12 @@ class LibraryDB:
         return {r["id"]: r["embedding_text"] for r in rows}
 
     def paper_count(self) -> int:
+        """Return total number of papers in the database."""
         row = self.conn.execute("SELECT COUNT(*) as cnt FROM papers").fetchone()
         return row["cnt"]
 
     def chunk_count(self) -> int:
+        """Return total number of chunks in the database."""
         row = self.conn.execute("SELECT COUNT(*) as cnt FROM chunks").fetchone()
         return row["cnt"]
 
@@ -333,6 +362,7 @@ class LibraryDB:
 
     @staticmethod
     def _row_to_paper(row: sqlite3.Row) -> Paper:
+        """Convert a sqlite3.Row from the papers table into a Paper dataclass."""
         return Paper(
             id=row["id"],
             title=row["title"],
@@ -347,6 +377,7 @@ class LibraryDB:
 
     @staticmethod
     def _row_to_chunk(row: sqlite3.Row) -> Chunk:
+        """Convert a sqlite3.Row from the chunks table into a Chunk dataclass."""
         return Chunk(
             id=row["id"],
             paper_id=row["paper_id"],

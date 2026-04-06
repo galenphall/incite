@@ -1,4 +1,26 @@
-"""Data acquisition commands: fetch, enrich, expand, fetch-fulltext, extract-pdfs."""
+"""Data acquisition commands: fetch, enrich, expand, fetch-fulltext, extract-pdfs.
+
+Provides CLI commands for building and extending the paper corpus.
+
+Commands:
+    fetch: Search Semantic Scholar and save results as a corpus JSONL
+    enrich: Enrich a BibTeX file with S2/OpenAlex metadata into a corpus JSONL
+    expand: Grow the benchmark test set from unarXiv data
+    fetch-fulltext: Download LaTeX sources from arXiv or unarXiv for full-text
+    extract-pdfs: Extract full text from PDFs in Zotero storage
+
+Key functions:
+    register: Registers all five commands on a subparsers group
+    cmd_fetch / cmd_enrich / cmd_expand / cmd_fetch_fulltext / cmd_extract_pdfs:
+        Individual command handlers
+
+Related modules:
+    corpus/semantic_scholar.py — SemanticScholarClient used by cmd_fetch
+    corpus/enrichment.py — enrich_bibtex_to_corpus used by cmd_enrich
+    corpus/unarxiv.py — process_unarxiv_directory used by cmd_expand
+    corpus/arxiv_fulltext.py — fetch_arxiv_fulltext used by cmd_fetch_fulltext
+    corpus/pdf_extractor.py — extract_pdfs_for_corpus used by cmd_extract_pdfs
+"""
 
 import os
 import sys
@@ -15,6 +37,7 @@ def register(subparsers):
 
 
 def _register_fetch(subparsers):
+    """Add the 'fetch' subcommand to subparsers."""
     p = subparsers.add_parser("fetch", help="Fetch papers from Semantic Scholar")
     p.add_argument("query", type=str, help="Search query")
     p.add_argument("--limit", "-n", type=int, default=100, help="Number of papers to fetch")
@@ -26,6 +49,7 @@ def _register_fetch(subparsers):
 
 
 def _register_enrich(subparsers):
+    """Add the 'enrich' subcommand to subparsers."""
     p = subparsers.add_parser("enrich", help="Enrich BibTeX file with metadata from APIs")
     p.add_argument("bibtex_file", type=str, help="Path to .bib file")
     p.add_argument(
@@ -44,6 +68,7 @@ def _register_enrich(subparsers):
 
 
 def _register_expand(subparsers):
+    """Add the 'expand' subcommand to subparsers."""
     p = subparsers.add_parser("expand", help="Expand test set from unarXiv data")
     p.add_argument(
         "--data-dir",
@@ -87,6 +112,7 @@ def _register_expand(subparsers):
 
 
 def _register_fetch_fulltext(subparsers):
+    """Add the 'fetch-fulltext' subcommand to subparsers."""
     p = subparsers.add_parser("fetch-fulltext", help="Download full text from arXiv LaTeX sources")
     p.add_argument(
         "--corpus",
@@ -120,6 +146,7 @@ def _register_fetch_fulltext(subparsers):
 
 
 def _register_extract_pdfs(subparsers):
+    """Add the 'extract-pdfs' subcommand to subparsers."""
     p = subparsers.add_parser("extract-pdfs", help="Extract text from PDFs in Zotero storage")
     p.add_argument(
         "--zotero-dir",

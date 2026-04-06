@@ -1,4 +1,26 @@
-"""LLM-powered commands: enrich-llm, generate-synthetic, reformulate, enrich-chunks."""
+"""LLM-powered commands: enrich-llm, generate-synthetic, reformulate, enrich-chunks.
+
+All commands call Anthropic's API (Claude Haiku by default) for LLM-assisted
+corpus enrichment, synthetic data generation, and query reformulation.
+Each command supports a --batch flag to use the Batch API (50% cheaper).
+
+Commands:
+    enrich-llm: Generate LLM descriptions for papers (appended to embedding text)
+    generate-synthetic: Generate synthetic citation contexts for training/eval
+    reformulate: Rewrite test set queries as hypothetical document excerpts (HyDE)
+    enrich-chunks: Add contextual snippets to chunks (Anthropic contextual retrieval)
+
+Key functions:
+    register: Adds all four commands to a subparsers group
+    cmd_enrich_llm / cmd_generate_synthetic / cmd_reformulate / cmd_enrich_chunks:
+        Individual command handlers
+
+Related modules:
+    corpus/contextual_enrichment.py — enrich_chunks_sync / enrich_chunks_batch
+    corpus/llm_enrichment.py — enrich_corpus / enrich_corpus_batch
+    corpus/synthetic_contexts.py — generate_synthetic_batch / _threaded
+    corpus/query_reformulation.py — reformulate_queries / reformulate_queries_batch
+"""
 
 import os
 import sys
@@ -17,6 +39,7 @@ def register(subparsers):
 
 
 def _register_enrich_llm(subparsers):
+    """Add the 'enrich-llm' subcommand to subparsers."""
     p = subparsers.add_parser("enrich-llm", help="Generate LLM descriptions for corpus papers")
     p.add_argument(
         "--corpus",
@@ -51,6 +74,7 @@ def _register_enrich_llm(subparsers):
 
 
 def _register_generate_synthetic(subparsers):
+    """Add the 'generate-synthetic' subcommand to subparsers."""
     p = subparsers.add_parser(
         "generate-synthetic", help="Generate synthetic citation contexts from Zotero library"
     )
@@ -114,6 +138,7 @@ def _register_generate_synthetic(subparsers):
 
 
 def _register_reformulate(subparsers):
+    """Add the 'reformulate' subcommand to subparsers."""
     p = subparsers.add_parser("reformulate", help="Reformulate test set queries using LLM (HyDE)")
     p.add_argument(
         "--test-set",
@@ -157,6 +182,7 @@ def _register_reformulate(subparsers):
 
 
 def _register_enrich_chunks(subparsers):
+    """Add the 'enrich-chunks' subcommand to subparsers."""
     p = subparsers.add_parser("enrich-chunks", help="Generate LLM context for chunks")
     p.add_argument(
         "--corpus",
