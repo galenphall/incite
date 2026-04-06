@@ -1,4 +1,23 @@
-"""BM25 lexical retrieval."""
+"""BM25 lexical retrieval.
+
+Implements BM25Okapi-based retrieval over paper title+abstract text.
+Used as the lexical arm of hybrid retrieval (RRF-fused with neural).
+
+Key class:
+    BM25Retriever: Retriever implementation backed by rank_bm25.BM25Okapi
+
+Key functions:
+    tokenize_with_stopwords: Lowercase + punctuation normalization + stopword removal
+    tokenize_with_stemming: tokenize_with_stopwords + Snowball English stemming
+
+Constants:
+    STOPWORDS: frozenset of standard English + common academic filler words
+
+Related modules:
+    retrieval/hybrid.py — HybridRetriever fuses BM25Retriever with neural retrieval
+    retrieval/paragraph.py — HybridParagraphRetriever uses BM25Retriever at paper level
+    retrieval/factory.py — creates BM25Retriever via create_retriever()
+"""
 
 import re
 import time
@@ -214,11 +233,11 @@ def tokenize_with_stopwords(text: str) -> list[str]:
     return [t for t in tokens if t not in STOPWORDS and len(t) > 1]
 
 
-_snowball_stemmer = None
+_snowball_stemmer = None  # Module-level cache; SnowballStemmer construction is expensive
 
 
 def _get_stemmer():
-    """Get or create a cached SnowballStemmer instance."""
+    """Return the module-level SnowballStemmer, creating it on first call."""
     global _snowball_stemmer
     if _snowball_stemmer is None:
         from nltk.stem import SnowballStemmer

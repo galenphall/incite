@@ -9,6 +9,18 @@ Requires GROBID service running (via Docker):
     docker run --rm -p 8070:8070 grobid/grobid:0.8.0
 
 Reference: https://grobid.readthedocs.io/
+
+Key classes:
+    GROBIDClient: HTTP client for the GROBID REST API
+    GROBIDResult: Structured extraction result with full_text and paragraphs properties
+    GROBIDSection: A section with optional heading and paragraph text
+    GROBIDReference: Bibliographic reference extracted from back matter
+    GROBIDFigure: Figure or table with caption
+
+Related modules:
+    corpus/pdf_extractor.py — simpler PyMuPDF-based extraction (no GROBID needed)
+    corpus/pipeline.py — LocalPipeline/CloudPipeline wrappers that use GROBID or PyMuPDF
+    corpus/chunking.py — consumes GROBIDResult sections to produce Chunk objects
 """
 
 import logging

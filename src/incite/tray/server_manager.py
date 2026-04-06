@@ -29,6 +29,15 @@ class ServerManager:
         method: str = "hybrid",
         mode: str = "paper",
     ):
+        """Initialize the server manager.
+
+        Args:
+            host: Host address for the uvicorn server.
+            port: Port for the uvicorn server.
+            embedder: Embedder model to pass via INCITE_EMBEDDER env var.
+            method: Retrieval method to pass via INCITE_METHOD env var.
+            mode: Retrieval mode to pass via INCITE_MODE env var.
+        """
         self.host = host
         self.port = port
         self.embedder = embedder
@@ -169,9 +178,11 @@ class _ExternalProcess:
     """
 
     def __init__(self, pid: int):
+        """Wrap an existing process by its PID."""
         self.pid = pid
 
     def poll(self) -> int | None:
+        """Return None if the process is alive, or a non-zero int if it has exited."""
         try:
             os.kill(self.pid, 0)
             return None  # still alive
@@ -179,9 +190,11 @@ class _ExternalProcess:
             return 1  # exited
 
     def send_signal(self, sig: int):
+        """Send a signal to the process."""
         os.kill(self.pid, sig)
 
     def kill(self):
+        """Send SIGKILL to the process."""
         os.kill(self.pid, signal.SIGKILL)
 
     def wait(self, timeout: float | None = None):
