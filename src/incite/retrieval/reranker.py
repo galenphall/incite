@@ -1,4 +1,25 @@
-"""Cross-encoder rerankers for improving retrieval precision."""
+"""Cross-encoder rerankers for improving retrieval precision.
+
+Cross-encoders jointly encode query + document, capturing fine-grained
+interactions that bi-encoders miss. Used as a second stage after initial
+retrieval (paper or hybrid) to improve precision at top ranks.
+
+Key classes:
+    CrossEncoderReranker: Scores query-document pairs via sentence-transformers CrossEncoder
+    RerankedRetriever: Convenience wrapper chaining a Retriever + Reranker in one step
+
+Key function:
+    get_reranker: Factory that creates a CrossEncoderReranker from RERANKERS keys
+
+Constants:
+    RERANKERS: dict of named cross-encoder configs (model, max_length, size_mb)
+    DEFAULT_RERANKER: "bge" (BGE Reranker v2 M3 — best quality)
+
+Related modules:
+    interfaces.py — Reranker and Retriever ABCs implemented here
+    retrieval/factory.py — create_reranked_retriever() uses get_reranker()
+    cli/eval.py — --reranker flag enables CrossEncoderReranker during evaluation
+"""
 
 import time
 from typing import Optional, Union

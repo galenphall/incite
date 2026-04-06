@@ -5,6 +5,19 @@ via a persistent download URL and stores PDFs in Google Drive (accessible
 locally via Google Drive Desktop). This module fetches metadata from the
 BibTeX URL, matches PDFs from the local Google Drive folder, and produces
 Paper objects for the inCite pipeline.
+
+Key class:
+    PaperpileSource: CorpusSource implementation with ETag-based incremental refresh
+
+Key functions:
+    find_paperpile_pdfs: Index a Google Drive folder of PDFs by author/year/title
+    match_paper_to_pdf: Fuzzy-match a Paper to a PDF using three fallback strategies
+
+Related modules:
+    corpus/enrichment.py — BibTeXParser and MetadataEnricher used here
+    corpus/semantic_scholar.py — S2 client used for enrichment
+    corpus/openalex.py — OpenAlex client used for enrichment
+    api.py — INCITE_SOURCE=paperpile creates a PaperpileSource
 """
 
 import logging
@@ -336,7 +349,7 @@ class PaperpileSource:
         return True
 
     def _needs_refresh_url(self) -> bool:
-        """Check if the remote BibTeX has changed via HTTP HEAD."""
+        """Return True if the remote BibTeX ETag differs from the cached one."""
         import requests
 
         etag_path = self._cache_dir / "paperpile_bibtex.etag"
@@ -354,7 +367,7 @@ class PaperpileSource:
             return False  # Don't force refresh on network errors
 
     def _needs_refresh_file(self, corpus_path: Path) -> bool:
-        """Check if the local .bib file is newer than the cached corpus."""
+        """Return True if the local .bib file has been modified since corpus was cached."""
         if not self._bibtex_path.exists():
             return False
         return self._bibtex_path.stat().st_mtime > corpus_path.stat().st_mtime
