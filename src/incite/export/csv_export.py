@@ -24,6 +24,7 @@ def _paper_to_row(
     confidence: float | None = None,
     matched_paragraph: str | None = None,
 ) -> dict[str, str]:
+    """Convert a Paper to a CSV row dict."""
     return {
         "title": paper.title,
         "authors": "; ".join(paper.authors),
@@ -49,6 +50,7 @@ class CSVFormat:
         confidences: list[float] | None = None,
         matched_paragraphs: list[str | None] | None = None,
     ) -> str:
+        """Export multiple papers to CSV format with optional confidence and evidence columns."""
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=_COLUMNS)
         writer.writeheader()
@@ -64,6 +66,7 @@ class CSVFormat:
         confidence: float | None = None,
         matched_paragraph: str | None = None,
     ) -> str:
+        """Export a single paper to CSV format with optional confidence and evidence columns."""
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=_COLUMNS)
         writer.writeheader()

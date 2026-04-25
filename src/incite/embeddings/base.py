@@ -1,4 +1,14 @@
-"""Base embedder implementation."""
+"""Base embedder abstract class and shared query-caching logic.
+
+All embedder implementations (MiniLM, Granite, Voyage, etc.) inherit from
+BaseEmbedder. Subclasses must implement ``embed()`` and ``dimension``.
+
+Related modules:
+- embeddings/stores.py — FAISSStore for indexing embeddings
+- embeddings/chunk_store.py — ChunkStore for paragraph embeddings
+- embeddings/voyage.py — API-based Voyage embedder
+- retrieval/factory.py — factory that instantiates embedders by key
+"""
 
 from abc import ABC, abstractmethod
 
