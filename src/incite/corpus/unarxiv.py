@@ -1,13 +1,23 @@
 """unarXiv dataset processing for citation context extraction.
 
-This module provides extensible tools for processing unarXiv JSONL files,
-extracting citation contexts, and fetching metadata for cited works.
+This module provides the core extraction machinery for unarXiv JSONL files:
+parsing papers, segmenting sentences, and assembling citation contexts.
+
+The top-level pipeline orchestrator (``process_unarxiv_directory``) lives in
+``incite.corpus.unarxiv_pipeline`` and is re-exported here for backward
+compatibility.
 
 unarXiv data format:
 - paper_id: arXiv ID
 - metadata: {title, authors, abstract, ...}
 - body_text: [{section, text, cite_spans: [{start, end, ref_id}]}]
 - bib_entries: {ref_id: {bib_entry_raw, ids: {open_alex_id, doi, ...}}}
+
+Classes:
+    BibEntry: A parsed bibliography entry with resolved external IDs.
+    SourcePaper: A source paper with extracted citation contexts.
+    UnarXivProcessor: Core processor — parses JSONL files, extracts contexts,
+        fetches OpenAlex metadata.
 """
 
 import json
@@ -694,208 +704,20 @@ class UnarXivProcessor:
         return papers_by_id
 
 
-def process_unarxiv_directory(
-    data_dir: Path | str,
-    output_corpus: Path | str,
-    output_test_set: Path | str,
-    openalex_email: Optional[str] = None,
-    min_coverage: float = 0.3,
-    min_reference_set_size: int = 15,
-    skip_existing: bool = True,
-    target_source_papers: int = 100,
-) -> dict:
-    """Process unarXiv JSONL files incrementally until target is reached.
+# --- Re-exports for backward compatibility ---
+# Lazy import via __getattr__ avoids a circular import:
+# unarxiv_pipeline imports UnarXivProcessor from this module, so a top-level
+# import here would create a cycle when unarxiv_pipeline is loaded first.
+__all__ = [
+    "BibEntry",
+    "SourcePaper",
+    "UnarXivProcessor",
+]
 
-    Processes files one at a time and stops early once we have enough
-    qualifying source papers. This is much faster than scanning everything.
 
-    Args:
-        data_dir: Directory containing unarXiv JSONL files
-        output_corpus: Path to output corpus.jsonl
-        output_test_set: Path to output test_set.jsonl
-        openalex_email: Email for OpenAlex polite pool
-        min_coverage: Minimum citation coverage to include a paper
-        min_reference_set_size: Minimum resolved references to include paper (default 15)
-        skip_existing: If True, don't re-process papers already in test set
-        target_source_papers: Stop after reaching this many source papers (default 100)
+def __getattr__(name: str):
+    if name == "process_unarxiv_directory":
+        from incite.corpus.unarxiv_pipeline import process_unarxiv_directory
 
-    Returns:
-        Stats dict with processing summary
-    """
-    from incite.corpus.loader import load_corpus, load_test_set, save_corpus, save_test_set
-
-    data_dir = Path(data_dir)
-    output_corpus = Path(output_corpus)
-    output_test_set = Path(output_test_set)
-
-    # Find all JSONL files
-    jsonl_files = sorted(data_dir.glob("**/*.jsonl"))
-    if not jsonl_files:
-        print(f"No JSONL files found in {data_dir}")
-        return {"error": "No JSONL files found"}
-
-    print(f"Found {len(jsonl_files)} JSONL files")
-
-    # Load existing data
-    existing_corpus = []
-    existing_contexts = []
-    skip_paper_ids: set[str] = set()
-    corpus_ids: set[str] = set()
-
-    if skip_existing:
-        if output_corpus.exists():
-            existing_corpus = load_corpus(output_corpus)
-            corpus_ids = {p.id for p in existing_corpus}
-            print(f"Loaded {len(existing_corpus)} existing corpus papers")
-
-        if output_test_set.exists():
-            existing_contexts = load_test_set(output_test_set)
-            skip_paper_ids = {
-                ctx.source_paper_id for ctx in existing_contexts if ctx.source_paper_id
-            }
-            print(
-                f"Loaded {len(existing_contexts)} existing contexts "
-                f"from {len(skip_paper_ids)} papers"
-            )
-
-    # Initialize
-    client = OpenAlexClient(email=openalex_email)
-    processor = UnarXivProcessor(openalex_client=client)
-
-    # Cache for fetched papers (persists across files)
-    papers_cache: dict[str, Paper] = {p.id: p for p in existing_corpus}
-
-    new_papers: list[Paper] = []
-    new_contexts: list[CitationContext] = []
-    source_papers_added = 0
-
-    stats = {
-        "files_processed": 0,
-        "papers_scanned": 0,
-        "papers_included": 0,
-        "papers_skipped_coverage": 0,
-        "papers_skipped_ref_size": 0,
-        "contexts_included": 0,
-        "references_fetched": 0,
-    }
-
-    print(f"Target: {target_source_papers} source papers (have {len(skip_paper_ids)} existing)")
-    target_remaining = target_source_papers - len(skip_paper_ids)
-
-    if target_remaining <= 0:
-        print("Already have enough source papers!")
-        return stats
-
-    # Process files incrementally
-    pbar = tqdm(jsonl_files, desc="Processing files")
-    for jsonl_path in pbar:
-        stats["files_processed"] += 1
-
-        # Process each paper in this file
-        for source in processor.iter_papers(jsonl_path):
-            if source.paper_id in skip_paper_ids:
-                continue
-            if not source.citation_contexts:
-                continue
-
-            stats["papers_scanned"] += 1
-
-            # Get OpenAlex IDs we need to fetch
-            ref_ids = source.reference_openalex_ids
-            if len(ref_ids) < min_reference_set_size:
-                stats["papers_skipped_ref_size"] += 1
-                continue
-
-            # Fetch only the references we don't have yet
-            to_fetch = [rid for rid in ref_ids if rid not in papers_cache]
-            if to_fetch:
-                fetched = processor._fetch_papers_batch(to_fetch, show_progress=False)
-                papers_cache.update(fetched)
-                stats["references_fetched"] += len(fetched)
-
-            # Calculate coverage
-            resolved = [
-                rid for rid in ref_ids if rid in papers_cache and papers_cache[rid].abstract
-            ]
-            coverage = len(resolved) / len(ref_ids) if ref_ids else 0
-
-            if coverage < min_coverage:
-                stats["papers_skipped_coverage"] += 1
-                continue
-
-            if len(resolved) < min_reference_set_size:
-                stats["papers_skipped_ref_size"] += 1
-                continue
-
-            # Paper qualifies! Add it
-            stats["papers_included"] += 1
-            source_papers_added += 1
-            skip_paper_ids.add(source.paper_id)
-
-            # Add referenced papers to corpus
-            for ref_id in resolved:
-                if ref_id not in corpus_ids:
-                    new_papers.append(papers_cache[ref_id])
-                    corpus_ids.add(ref_id)
-
-            # Create citation contexts
-            cite_num = 0
-            for ctx in source.citation_contexts:
-                openalex_id = ctx["openalex_id"]
-                if openalex_id not in resolved:
-                    continue
-
-                cite_num += 1
-                new_contexts.append(
-                    CitationContext(
-                        id=f"{source.paper_id}_cite_{cite_num}",
-                        local_context=ctx["text"],
-                        narrow_context=ctx.get("narrow", ""),
-                        broad_context=ctx.get("broad", ""),
-                        section_context=ctx["section"],
-                        global_context=source.title,
-                        source_paper_id=source.paper_id,
-                        ground_truth_ids=[openalex_id],
-                        reference_set_ids=resolved,
-                        mentioned_authors=ctx.get("mentioned_authors", []),
-                        mentioned_years=ctx.get("mentioned_years", []),
-                    )
-                )
-                stats["contexts_included"] += 1
-
-            pbar.set_postfix(
-                {"sources": source_papers_added, "contexts": stats["contexts_included"]}
-            )
-
-            # Check if we've reached target
-            if source_papers_added >= target_remaining:
-                print(f"\nReached target of {target_source_papers} source papers!")
-                break
-
-        if source_papers_added >= target_remaining:
-            break
-
-    # Merge and save
-    merged_corpus = existing_corpus + new_papers
-    merged_contexts = existing_contexts + new_contexts
-
-    save_corpus(merged_corpus, output_corpus)
-    save_test_set(merged_contexts, output_test_set)
-
-    stats["corpus_total"] = len(merged_corpus)
-    stats["contexts_total"] = len(merged_contexts)
-    stats["source_papers_total"] = len(skip_paper_ids)
-
-    print("\nProcessing complete:")
-    print(f"  Files processed: {stats['files_processed']}/{len(jsonl_files)}")
-    print(f"  Papers scanned: {stats['papers_scanned']}")
-    print(f"  Papers included: {stats['papers_included']}")
-    print(f"  Papers skipped (low coverage): {stats['papers_skipped_coverage']}")
-    print(f"  Papers skipped (small ref set): {stats['papers_skipped_ref_size']}")
-    print(f"  References fetched: {stats['references_fetched']}")
-    print(f"  New contexts: {stats['contexts_included']}")
-    print(f"  Total corpus: {stats['corpus_total']}")
-    print(f"  Total contexts: {stats['contexts_total']}")
-    print(f"  Total source papers: {stats['source_papers_total']}")
-
-    return stats
+        return process_unarxiv_directory
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

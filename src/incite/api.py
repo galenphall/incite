@@ -2,6 +2,39 @@
 
 Thin HTTP wrapper around InCiteAgent. Start with:
     incite serve --port 8230
+
+Architecture:
+    - lifespan context manager loads InCiteAgent at startup from env vars
+    - CORS configured for localhost + Google Docs sidebar origins
+    - PrivateNetworkAccessMiddleware handles Chrome PNA preflight requests
+    - Word add-in static files served from /word-addin if dist/ folder exists
+
+Environment variables:
+    INCITE_METHOD: "neural" | "bm25" | "hybrid" (default: "hybrid")
+    INCITE_EMBEDDER: embedder key, e.g. "minilm-ft" (default: "minilm")
+    INCITE_MODE: "paper" | "paragraph" (default: "paper")
+    INCITE_CHUNKING: "paragraph" | "sentence" | "grobid" (default: "paragraph")
+    INCITE_SOURCE: "zotero" | "paperpile" | "folder" | "file" | path (default: "zotero")
+    INCITE_FOLDER_PATH: required when INCITE_SOURCE=folder
+    INCITE_CORPUS_PATH: required when INCITE_SOURCE=file
+    INCITE_SQLITE: "1" | "true" to force SQLite-backed pipeline
+
+Endpoints:
+    GET  /health          — liveness + readiness check
+    GET  /stats           — corpus statistics
+    GET  /config          — current retriever configuration
+    POST /recommend       — single-query recommendation
+    POST /batch           — multi-query recommendation
+    GET  /pipeline/status — cloud vs. local pipeline status
+
+Key classes:
+    RecommendRequest: Pydantic model for /recommend body
+    BatchRequest: Pydantic model for /batch body
+    PrivateNetworkAccessMiddleware: Chrome Private Network Access preflight handler
+
+Related modules:
+    agent.py — InCiteAgent loaded at startup
+    corpus/pipeline.py — CloudPipeline used by /pipeline/status
 """
 
 import logging
@@ -322,7 +355,7 @@ async def global_exception_handler(request, exc):
 
 
 def _get_display_mode(agent) -> str:
-    """Get user-facing mode name from internal mode/chunking."""
+    """Return user-facing mode name: 'paper', 'paragraph', 'sentence', or 'grobid'."""
     if agent.mode == "paper":
         return "paper"
     # For paragraph mode, return the chunking strategy as the mode
