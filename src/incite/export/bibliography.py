@@ -102,6 +102,12 @@ class BibliographyFormat:
     _style_key: str  # CSL style identifier
 
     def __init__(self, format_name: str, style_key: str) -> None:
+        """Initialize a bibliography format with a display name and CSL style key.
+
+        Args:
+            format_name: Human-readable format name (e.g., "APA")
+            style_key: CSL style identifier used by citeproc-py-styles
+        """
         self.format_name = format_name
         self._style_key = style_key
 
