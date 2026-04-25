@@ -1,11 +1,26 @@
-"""Session state and caching for the webapp."""
+"""Session state and caching for the webapp.
 
-import json
+Manages corpus loading, index building, and retriever construction for the
+local Streamlit UI. Configuration management has been extracted to
+:mod:`incite.webapp.config`.
+
+Key responsibilities:
+    - Loading papers from Zotero / Paperpile sources with caching
+    - Building and caching FAISS indexes per embedder type
+    - Chunking papers and building paragraph-level chunk indexes
+    - Providing :func:`get_retriever` and :func:`get_paragraph_retriever`
+      as the primary entry points for the UI
+
+Related modules:
+    - incite.webapp.config: ~/.incite/config.json read/write.
+    - incite.retrieval.factory: Lower-level index and retriever construction.
+"""
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from incite.corpus.loader import load_chunks, load_corpus, save_chunks, save_corpus
-from incite.corpus.zotero_reader import find_zotero_data_dir, read_zotero_library
+from incite.corpus.zotero_reader import read_zotero_library
 from incite.interfaces import Retriever
 from incite.models import Chunk, Paper
 from incite.retrieval.factory import (
@@ -19,6 +34,12 @@ from incite.retrieval.factory import (
     create_retriever,
     get_chunker,
 )
+from incite.webapp.config import (
+    get_cache_dir,
+    get_config,
+    get_config_path,  # noqa: F401
+    save_config,  # noqa: F401
+)
 
 if TYPE_CHECKING:
     from incite.embeddings.chunk_store import ChunkStore
@@ -30,82 +51,6 @@ if TYPE_CHECKING:
 # v3: Per-chunk bibliography entry filter (catches entries that bypass section detection)
 # v4: Metadata prefix on chunks (title, author, year, journal) for better retrieval
 CHUNK_CACHE_VERSION = 4
-
-
-def _migrate_cache_dir() -> None:
-    """Migrate ~/.mayacite/ to ~/.incite/ if needed (one-time rename)."""
-    import logging
-
-    old_dir = Path.home() / ".mayacite"
-    new_dir = Path.home() / ".incite"
-    if old_dir.is_dir() and not new_dir.exists():
-        logging.getLogger(__name__).info("Migrating cache directory: %s -> %s", old_dir, new_dir)
-        old_dir.rename(new_dir)
-
-
-def get_cache_dir() -> Path:
-    """Get the cache directory, creating if needed."""
-    _migrate_cache_dir()
-    cache_dir = Path.home() / ".incite"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir
-
-
-def get_config_path() -> Path:
-    """Get path to config file."""
-    return get_cache_dir() / "config.json"
-
-
-def get_config() -> dict:
-    """Load configuration from JSON file."""
-    config_path = get_config_path()
-
-    # Migrate from old TOML config if it exists
-    old_toml_path = get_cache_dir() / "config.toml"
-    if not config_path.exists() and old_toml_path.exists():
-        try:
-            import tomllib
-
-            with open(old_toml_path, "rb") as f:
-                config = tomllib.load(f)
-        except ImportError:
-            try:
-                import tomli
-
-                with open(old_toml_path, "rb") as f:
-                    config = tomli.load(f)
-            except ImportError:
-                config = None
-        if config:
-            save_config(config)
-            return config
-
-    if not config_path.exists():
-        # Auto-detect Zotero directory
-        detected_dir = find_zotero_data_dir()
-        return {
-            "zotero": {
-                "data_dir": str(detected_dir) if detected_dir else "",
-            },
-            "paperpile": {
-                "bibtex_url": "",
-                "bibtex_path": "",
-                "pdf_folder": "",
-            },
-            "webapp": {
-                "default_method": "hybrid",
-                "default_k": 5,
-            },
-        }
-
-    with open(config_path) as f:
-        return json.loads(f.read())
-
-
-def save_config(config: dict) -> None:
-    """Save configuration to JSON file."""
-    config_path = get_config_path()
-    config_path.write_text(json.dumps(config, indent=2))
 
 
 def needs_refresh_from_zotero(zotero_dir: Path, corpus_path: Path) -> bool:
