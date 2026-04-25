@@ -1,4 +1,16 @@
-"""Server commands: serve, webapp."""
+"""Server commands: serve, webapp, tray.
+
+Registers and implements the ``incite serve``, ``incite webapp``, and
+``incite tray`` CLI subcommands. The serve command starts the FastAPI/uvicorn
+REST API; webapp launches the Streamlit testing UI; tray starts the macOS
+menu bar app.
+
+Related modules:
+- cli/_shared.py — shared constants (EMBEDDER_CHOICES)
+- api.py — the FastAPI application started by serve
+- tray/app.py — the rumps menu bar app started by tray
+- webapp/app.py — the Streamlit app started by webapp
+"""
 
 import os
 import sys
@@ -8,7 +20,7 @@ from incite.cli._shared import EMBEDDER_CHOICES
 
 
 def _config_default(key: str, fallback):
-    """Read a default value from saved config, falling back if missing."""
+    """Read a default value from saved config, returning fallback if missing or invalid."""
     try:
         from incite.webapp.state import get_config
 
@@ -30,6 +42,7 @@ def register(subparsers):
 
 
 def _register_serve(subparsers):
+    """Register the serve subcommand with its arguments."""
     saved_embedder = _config_default("embedder", "minilm")
     saved_method = _config_default("method", "hybrid")
     saved_port = _config_default("port", 8230)
@@ -81,6 +94,7 @@ def _register_serve(subparsers):
 
 
 def _register_webapp(subparsers):
+    """Register the webapp subcommand with its arguments."""
     p = subparsers.add_parser("webapp", help="Launch the testing webapp")
     p.add_argument(
         "--port", type=int, default=8501, help="Port to run the webapp on (default: 8501)"
@@ -89,6 +103,7 @@ def _register_webapp(subparsers):
 
 
 def _register_tray(subparsers):
+    """Register the tray subcommand with its arguments."""
     saved_embedder = _config_default("embedder", "minilm")
     saved_method = _config_default("method", "hybrid")
     saved_port = _config_default("port", 8230)

@@ -11,6 +11,16 @@ Key features:
 - Uses prompt caching to cache the full document, making per-chunk enrichment cheap
 - Generates 50-100 token context per chunk
 - Async batch processing for efficiency
+
+Key functions:
+    enrich_chunks_sync: Async-backed synchronous enrichment (cheaper with caching)
+    enrich_chunks_batch: Batch API enrichment (50% cheaper, no caching)
+    estimate_enrichment_cost: Pre-flight cost estimate before enriching
+
+Related modules:
+    corpus/chunking.py — creates the chunks that get enriched here
+    corpus/batch_utils.py — poll_batch() used by enrich_chunks_batch
+    cli/llm.py — CLI entry points that call these functions
 """
 
 import asyncio
