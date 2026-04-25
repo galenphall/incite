@@ -65,7 +65,17 @@ def register(subparsers):
 
 
 def _load_zotero_papers() -> list:
-    """Load papers from local Zotero, auto-detecting the data directory."""
+    """Load papers from the local Zotero SQLite database.
+
+    Checks the saved config for a configured Zotero data directory,
+    falling back to auto-detection via find_zotero_data_dir().
+
+    Returns:
+        List of Paper objects from the Zotero library.
+
+    Raises:
+        FileNotFoundError: If no Zotero directory can be found.
+    """
     from pathlib import Path
 
     from incite.corpus.zotero_reader import find_zotero_data_dir

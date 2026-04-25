@@ -3,6 +3,10 @@
 Provides a Python SDK and JSON-friendly interface for AI coding agents
 to test the recommendation system programmatically.
 
+Data models (TimingInfo, AgentRecommendation, AgentResponse) live in
+incite.agent_models. PDF extraction helpers live in incite.agent_helpers.
+Both are re-exported here for backward compatibility.
+
 Example usage:
 
     # Initialize from Zotero library
@@ -23,88 +27,17 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+from incite.agent_helpers import _extract_pdfs_for_papers
+from incite.agent_models import AgentRecommendation, AgentResponse, TimingInfo
 
 if TYPE_CHECKING:
     from incite.embeddings.stores import FAISSStore
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TimingInfo:
-    """Timing breakdown for a retrieval operation."""
-
-    total_ms: float
-    embed_query_ms: float = 0.0
-    vector_search_ms: float = 0.0
-    bm25_search_ms: Optional[float] = None
-    fusion_ms: Optional[float] = None
-    evidence_ms: Optional[float] = None
-
-    def to_dict(self) -> dict:
-        """Convert to dict, excluding None values."""
-        return {k: v for k, v in asdict(self).items() if v is not None}
-
-
-@dataclass
-class AgentRecommendation:
-    """A single recommendation with full metadata."""
-
-    paper_id: str
-    rank: int
-    score: float
-    title: str
-    authors: list[str] = field(default_factory=list)
-    year: Optional[int] = None
-    abstract: Optional[str] = None  # First 300 chars
-    bibtex_key: Optional[str] = None
-    doi: Optional[str] = None
-    journal: Optional[str] = None
-    score_breakdown: dict[str, float] = field(default_factory=dict)
-    matched_paragraph: Optional[str] = None  # For paragraph mode
-    matched_paragraphs: list[dict] = field(default_factory=list)
-    zotero_uri: Optional[str] = None
-    confidence: float = 0.0  # Neural similarity confidence in [0, 1]
-
-    def to_dict(self) -> dict:
-        """Convert to dict, excluding None values."""
-        result = asdict(self)
-        return {k: v for k, v in result.items() if v is not None}
-
-
-@dataclass
-class AgentResponse:
-    """Complete response from a recommendation query."""
-
-    query: str
-    recommendations: list[AgentRecommendation]
-    timing: TimingInfo
-    corpus_size: int
-    method: str
-    embedder: str
-    timestamp: str
-    mode: str = "paper"  # "paper" or "paragraph"
-
-    def to_dict(self) -> dict:
-        """Convert to JSON-serializable dict."""
-        return {
-            "query": self.query,
-            "recommendations": [r.to_dict() for r in self.recommendations],
-            "timing": self.timing.to_dict(),
-            "corpus_size": self.corpus_size,
-            "method": self.method,
-            "embedder": self.embedder,
-            "mode": self.mode,
-            "timestamp": self.timestamp,
-        }
-
-    def to_json(self, indent: int = 2) -> str:
-        """Convert to formatted JSON string."""
-        return json.dumps(self.to_dict(), indent=indent)
 
 
 class InCiteAgent:
@@ -1293,48 +1226,3 @@ class InCiteAgent:
         return stats
 
 
-def _extract_pdfs_for_papers(papers: list, max_workers: int = 8) -> None:
-    """Extract PDF text into paper.paragraphs/full_text using PyMuPDF.
-
-    Modifies papers in-place. Papers without source_file or without
-    pymupdf installed are silently skipped.
-    """
-    try:
-        import fitz  # noqa: F401
-    except ImportError:
-        logger.info("pymupdf not installed, skipping PDF extraction")
-        return
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    from incite.corpus.pdf_extractor import extract_pdf_text
-
-    papers_with_pdfs = [p for p in papers if p.source_file and Path(p.source_file).exists()]
-    if not papers_with_pdfs:
-        return
-
-    def _extract_single(paper):
-        result = extract_pdf_text(paper.source_file)
-        return paper.id, result.full_text or "", result.paragraphs or []
-
-    results_map: dict[str, tuple[str, list[str]]] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_extract_single, p): p for p in papers_with_pdfs}
-        for future in as_completed(futures):
-            try:
-                paper_id, full_text, paragraphs = future.result()
-                if full_text:
-                    results_map[paper_id] = (full_text, paragraphs)
-            except Exception:
-                logger.debug("PDF extraction failed for %s", futures[future].id, exc_info=True)
-
-    # Update papers in-place
-    for paper in papers:
-        if paper.id in results_map:
-            paper.full_text, paper.paragraphs = results_map[paper.id]
-
-    logger.info(
-        "PDF extraction: %d/%d papers had extractable text",
-        len(results_map),
-        len(papers_with_pdfs),
-    )

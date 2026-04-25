@@ -22,6 +22,15 @@ class InCiteTray(rumps.App):
         mode: str = "paper",
         port: int = 8230,
     ):
+        """Initialize the tray app and build the menu.
+
+        Args:
+            auto_start: If True, start the API server automatically on launch.
+            embedder: Embedder model to pass to the API server.
+            method: Retrieval method to pass to the API server.
+            mode: Retrieval mode (paper, paragraph, etc.).
+            port: Port the API server will listen on.
+        """
         super().__init__("inCite", quit_button=None)
 
         self.server = ServerManager(
@@ -65,6 +74,7 @@ class InCiteTray(rumps.App):
     # ------------------------------------------------------------------
 
     def on_start(self, _):
+        """Start the API server subprocess."""
         if self.server.is_running():
             rumps.notification("inCite", "", "Server is already running.")
             return
@@ -75,6 +85,7 @@ class InCiteTray(rumps.App):
             rumps.notification("inCite", "", "Failed to start server. Check the log.")
 
     def on_stop(self, _):
+        """Stop the API server subprocess."""
         stopped = self.server.stop()
         if stopped:
             rumps.notification("inCite", "", "Server stopped.")
@@ -82,15 +93,19 @@ class InCiteTray(rumps.App):
             rumps.notification("inCite", "", "Server is not running.")
 
     def on_open_google_docs(self, _):
+        """Open Google Docs in the default browser."""
         webbrowser.open("https://docs.google.com")
 
     def on_open_webapp(self, _):
+        """Open the Streamlit webapp in the default browser."""
         webbrowser.open("http://localhost:8501")
 
     def on_open_docs(self, _):
+        """Open the FastAPI interactive docs in the default browser."""
         webbrowser.open(f"http://localhost:{self._port}/docs")
 
     def on_run_setup(self, _):
+        """Open a Terminal window and run incite setup."""
         subprocess.Popen(  # noqa: S603, S607
             [
                 "osascript",
@@ -100,12 +115,14 @@ class InCiteTray(rumps.App):
         )
 
     def on_view_log(self, _):
+        """Open the server log file in the default text viewer."""
         if LOG_FILE.exists():
             subprocess.run(["open", str(LOG_FILE)])  # noqa: S603, S607
         else:
             rumps.notification("inCite", "", "No log file found.")
 
     def on_troubleshooting(self, _):
+        """Open a Terminal window and run incite doctor."""
         subprocess.Popen(  # noqa: S603, S607
             [
                 "osascript",
@@ -115,6 +132,7 @@ class InCiteTray(rumps.App):
         )
 
     def on_quit(self, _):
+        """Stop the server and quit the application."""
         self.server.stop()
         rumps.quit_application()
 

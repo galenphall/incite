@@ -17,6 +17,12 @@ class SyntheticDB:
     """SQLite database for synthetic citation contexts."""
 
     def __init__(self, db_path: str | Path):
+        """Open (or create) the synthetic context database.
+
+        Args:
+            db_path: Path to the SQLite file. Parent directories are created
+                automatically if they don't exist.
+        """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path))
@@ -25,6 +31,7 @@ class SyntheticDB:
         self._migrate()
 
     def _create_tables(self):
+        """Create database tables if they don't already exist."""
         cursor = self._conn.cursor()
         cursor.executescript("""
             CREATE TABLE IF NOT EXISTS contexts (
@@ -272,10 +279,13 @@ class SyntheticDB:
         }
 
     def close(self):
+        """Close the database connection."""
         self._conn.close()
 
     def __enter__(self):
+        """Support use as a context manager."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close the database connection on context exit."""
         self.close()

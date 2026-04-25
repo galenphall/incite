@@ -1,4 +1,26 @@
-"""Semantic Scholar API client for fetching papers."""
+"""Semantic Scholar API client for fetching papers.
+
+Wraps the Semantic Scholar Graph API (v1) and Recommendations API.
+Handles rate limiting automatically (1 req/s with API key, 100/5min without).
+
+Key class:
+    SemanticScholarClient: REST client with methods for single lookup, bulk lookup,
+        search, references, citations, and single/multi-paper recommendations.
+
+Key methods:
+    get_paper: Fetch a single paper by S2 ID, DOI, or arXiv ID
+    get_papers_batch: Bulk-fetch up to 500 papers per request
+    search_papers: Keyword search with optional field/year filters
+    get_paper_references: Papers cited by a given paper
+    get_paper_citations: Papers that cite a given paper
+    get_recommendations: Per-paper S2 recommendations
+    get_recommendations_batch: Multi-paper recommendations (POST endpoint)
+
+Related modules:
+    corpus/openalex.py — OpenAlex client (parallel enrichment source)
+    corpus/enrichment.py — MetadataEnricher orchestrates S2 + OpenAlex lookups
+    corpus/paperpile_source.py — uses SemanticScholarClient for enrichment
+"""
 
 import logging
 import time
@@ -31,14 +53,14 @@ class SemanticScholarClient:
         self._last_request = 0.0
 
     def _rate_limit(self):
-        """Enforce rate limiting."""
+        """Sleep as needed to respect the configured per-request delay."""
         elapsed = time.time() - self._last_request
         if elapsed < self.delay:
             time.sleep(self.delay - elapsed)
         self._last_request = time.time()
 
     def _headers(self) -> dict:
-        """Get request headers."""
+        """Build request headers, adding x-api-key when configured."""
         headers = {}
         if self.api_key:
             headers["x-api-key"] = self.api_key
