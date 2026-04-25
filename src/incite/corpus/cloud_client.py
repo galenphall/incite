@@ -1,12 +1,17 @@
-"""Client for the inCite cloud processing service.
+"""CLI batch processing client for the inCite cloud service.
 
-Handles the full batch workflow:
+Handles the full batch workflow used by the self-hosted API pipeline:
 1. Create job with paper metadata
 2. Upload PDFs in batches
 3. Start processing
 4. Poll for completion
 5. Download result tarball
 6. Unpack into ~/.incite/
+
+Related modules:
+    - incite.corpus.cloud_upload: Web-tier upload client (WebUploadClient).
+    - incite.cli.setup: Setup wizard that invokes this client.
+    - cloud/worker.py: Server-side processing (not in src/).
 """
 
 import logging
@@ -49,6 +54,7 @@ class CloudProcessingClient:
         self.api_key = api_key
 
     def _headers(self) -> dict:
+        """Return authorization and content-type headers for API requests."""
         headers = {"Accept": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -135,7 +141,18 @@ class CloudProcessingClient:
             raise
 
     def _create_job(self, papers: list, embedder: str) -> str:
-        """Create a processing job and return the job ID."""
+        """Create a processing job and return the job ID.
+
+        Args:
+            papers: List of Paper objects to include in the job.
+            embedder: Embedder type used for index building.
+
+        Returns:
+            Job ID string assigned by the server.
+
+        Raises:
+            CloudProcessingError: If the server returns a non-200 status.
+        """
         paper_data = []
         for p in papers:
             has_pdf = bool(p.source_file and Path(p.source_file).exists())
@@ -165,8 +182,14 @@ class CloudProcessingClient:
 
         return resp.json()["job_id"]
 
-    def _upload_pdfs(self, job_id: str, papers: list, progress_callback=None):
-        """Upload PDFs in batches."""
+    def _upload_pdfs(self, job_id: str, papers: list, progress_callback=None) -> None:
+        """Upload PDFs for a job in batches of UPLOAD_BATCH_SIZE.
+
+        Args:
+            job_id: Server-assigned job identifier.
+            papers: Papers whose PDFs should be uploaded.
+            progress_callback: Optional callable(message: str) for progress.
+        """
         total = len(papers)
         uploaded = 0
 
@@ -200,8 +223,12 @@ class CloudProcessingClient:
                 for _, (_, fobj, _) in files:
                     fobj.close()
 
-    def _start_job(self, job_id: str):
-        """Start processing a job."""
+    def _start_job(self, job_id: str) -> None:
+        """Start processing a job.
+
+        Raises:
+            CloudProcessingError: If the server returns a non-200 status.
+        """
         resp = requests.post(
             f"{self.api_url}/api/jobs/{job_id}/start",
             headers=self._headers(),
@@ -214,8 +241,20 @@ class CloudProcessingClient:
         self,
         job_id: str,
         progress_callback=None,
-    ):
-        """Poll job status until completion or timeout."""
+    ) -> None:
+        """Poll job status until completion or timeout.
+
+        Polling intervals:
+        - Normal: every ``POLL_INTERVAL`` seconds (5 s).
+        - Hard deadline: ``MAX_WAIT_SECONDS`` (2 hours).
+
+        Args:
+            job_id: Server-assigned job identifier.
+            progress_callback: Optional callable(message: str) for progress.
+
+        Raises:
+            CloudProcessingError: On job failure, cancellation, or timeout.
+        """
         deadline = time.time() + MAX_WAIT_SECONDS
         start_time = time.monotonic()
         last_message = ""
@@ -278,7 +317,14 @@ class CloudProcessingClient:
         raise CloudProcessingError(f"Processing timed out after {MAX_WAIT_SECONDS // 60} minutes")
 
     def _download_result(self, job_id: str) -> Path:
-        """Download the result tarball to a temp location."""
+        """Download the result tarball to a temp location.
+
+        Args:
+            job_id: Server-assigned job identifier.
+
+        Returns:
+            Local path to the downloaded ``.tar.gz`` file.
+        """
         from incite.webapp.state import get_cache_dir
 
         cache_dir = get_cache_dir()
@@ -304,6 +350,16 @@ class CloudProcessingClient:
         Installs:
         - chunks.jsonl -> ~/.incite/zotero_chunks_{embedder}.jsonl
         - FAISS files -> ~/.incite/zotero_chunks_{embedder}/
+
+        Existing chunk files are backed up to ``.jsonl.bak`` before
+        overwriting to prevent accidental data loss.
+
+        Args:
+            tarball_path: Path to the downloaded ``.tar.gz`` result file.
+            embedder: Embedder type; used to construct destination filenames.
+
+        Returns:
+            Path to the unpacked FAISS index directory.
         """
         from incite.webapp.state import get_cache_dir
 
@@ -346,8 +402,12 @@ class CloudProcessingClient:
 
         return index_dest
 
-    def _delete_job(self, job_id: str):
-        """Delete a job from the server."""
+    def _delete_job(self, job_id: str) -> None:
+        """Delete a job from the server.
+
+        Called on error to clean up server-side state. Failures are logged
+        as warnings rather than raised, since cleanup is best-effort.
+        """
         try:
             requests.delete(
                 f"{self.api_url}/api/jobs/{job_id}",
@@ -358,291 +418,5 @@ class CloudProcessingClient:
             logger.warning("Failed to delete job %s: %s", job_id, e)
 
 
-class WebUploadClient:
-    """Client for uploading a local Zotero library to the web tier.
-
-    Uploads paper metadata and PDFs, then triggers server-side processing
-    (GROBID extraction, chunking, FAISS indexing).
-
-    Usage:
-        client = WebUploadClient(server_url, token)
-        client.upload_library(papers, progress_callback=print)
-    """
-
-    def __init__(self, server_url: str, token: str):
-        self.server_url = server_url.rstrip("/")
-        self.token = token
-
-    def _headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self.token}",
-            "Accept": "application/json",
-        }
-
-    def upload_library(
-        self,
-        papers: list,
-        progress_callback=None,
-    ) -> None:
-        """Upload a full library and wait for processing to complete.
-
-        Args:
-            papers: List of Paper objects (with source_file for PDFs)
-            progress_callback: Optional callback(message: str) for progress
-        """
-
-        def _log(msg: str) -> None:
-            if progress_callback:
-                progress_callback(msg)
-            logger.info(msg)
-
-        # Step 1: Upload metadata
-        _log(f"Uploading metadata for {len(papers)} papers...")
-        resp_meta = self._upload_metadata(papers)
-        _log(f"Library created (id={resp_meta['library_id']}, {resp_meta['num_papers']} papers)")
-
-        # Step 2: Upload PDFs (skip already-uploaded ones)
-        papers_with_pdf = [p for p in papers if p.source_file and Path(p.source_file).exists()]
-        if papers_with_pdf:
-            # Check what's already on the server
-            already_uploaded = self._get_uploaded_pdfs()
-            papers_to_upload = [p for p in papers_with_pdf if f"{p.id}.pdf" not in already_uploaded]
-            if papers_to_upload:
-                _log(
-                    f"Uploading {len(papers_to_upload)} PDFs "
-                    f"({len(already_uploaded)} already on server)..."
-                )
-                self._upload_pdfs(papers_to_upload, progress_callback=_log)
-            else:
-                _log(f"All {len(papers_with_pdf)} PDFs already on server")
-        else:
-            _log("No PDFs found locally (will use abstract-only chunks)")
-
-        # Step 3: Start processing
-        _log("Starting server-side processing...")
-        resp_proc = self._start_processing()
-        _log(f"Processing started (job_id={resp_proc['job_id']})")
-
-        # Step 4: Poll until done
-        _log("Waiting for processing to complete...")
-        self._wait_for_completion(progress_callback=_log)
-        _log("Library upload complete!")
-
-    def _get_uploaded_pdfs(self) -> set[str]:
-        """Query the server for PDFs already uploaded. Returns a set of filenames."""
-        try:
-            resp = requests.get(
-                f"{self.server_url}/api/v1/upload-library/pdfs",
-                headers=self._headers(),
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                return set(resp.json().get("pdfs", []))
-        except Exception as e:
-            logger.warning("Failed to query uploaded PDFs: %s", e)
-        return set()
-
-    def _upload_metadata(self, papers: list) -> dict:
-        """Upload paper metadata as JSON."""
-        paper_data = []
-        for p in papers:
-            paper_data.append(
-                {
-                    "id": p.id,
-                    "title": p.title,
-                    "abstract": p.abstract or "",
-                    "authors": p.authors or [],
-                    "year": p.year,
-                    "doi": p.doi,
-                    "journal": p.journal,
-                    "bibtex_key": getattr(p, "bibtex_key", None),
-                }
-            )
-
-        resp = requests.post(
-            f"{self.server_url}/api/v1/upload-library",
-            json={"papers": paper_data},
-            headers=self._headers(),
-            timeout=60,
-        )
-        if resp.status_code != 200:
-            raise CloudProcessingError(
-                f"Failed to upload metadata: {resp.status_code} {resp.text[:200]}"
-            )
-        return resp.json()
-
-    def _upload_pdfs(self, papers: list, progress_callback=None) -> None:
-        """Upload PDFs in batches of UPLOAD_BATCH_SIZE with parallel workers.
-
-        Uses a thread pool (UPLOAD_WORKERS) to upload multiple batches
-        concurrently. Falls back to one-at-a-time uploads on 413 (payload
-        too large) errors, and skips individual files that still exceed the
-        server limit.
-        """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        total = len(papers)
-        uploaded = 0
-        skipped = 0
-
-        # Build list of batches
-        batches: list[list] = []
-        for batch_start in range(0, total, UPLOAD_BATCH_SIZE):
-            batch = papers[batch_start : batch_start + UPLOAD_BATCH_SIZE]
-            batches.append(batch)
-
-        def _upload_batch(batch: list) -> tuple[int, int]:
-            """Upload a single batch, return (uploaded_count, skipped_count)."""
-            batch_uploaded = 0
-            batch_skipped = 0
-            files = []
-            for paper in batch:
-                pdf_path = Path(paper.source_file)
-                if pdf_path.exists():
-                    files.append(
-                        ("files", (f"{paper.id}.pdf", open(pdf_path, "rb"), "application/pdf"))
-                    )
-
-            if not files:
-                return 0, 0
-
-            try:
-                resp = requests.post(
-                    f"{self.server_url}/api/v1/upload-library/pdfs",
-                    files=files,
-                    headers={"Authorization": f"Bearer {self.token}"},
-                    timeout=300,
-                )
-                if resp.status_code == 413 and len(files) > 1:
-                    # Batch too large — close handles and retry one-at-a-time
-                    for _, (_, fobj, _) in files:
-                        fobj.close()
-                    for paper in batch:
-                        pdf_path = Path(paper.source_file)
-                        if not pdf_path.exists():
-                            continue
-                        with open(pdf_path, "rb") as fobj:
-                            single = [("files", (f"{paper.id}.pdf", fobj, "application/pdf"))]
-                            r = requests.post(
-                                f"{self.server_url}/api/v1/upload-library/pdfs",
-                                files=single,
-                                headers={"Authorization": f"Bearer {self.token}"},
-                                timeout=300,
-                            )
-                        if r.status_code == 413:
-                            batch_skipped += 1
-                            continue
-                        r.raise_for_status()
-                        batch_uploaded += 1
-                    return batch_uploaded, batch_skipped
-
-                resp.raise_for_status()
-                batch_uploaded = len(files)
-            finally:
-                for _, (_, fobj, _) in files:
-                    if not fobj.closed:
-                        fobj.close()
-
-            return batch_uploaded, batch_skipped
-
-        # Upload batches in parallel using thread pool
-        with ThreadPoolExecutor(max_workers=UPLOAD_WORKERS) as executor:
-            futures = {executor.submit(_upload_batch, batch): batch for batch in batches}
-            for future in as_completed(futures):
-                batch_uploaded, batch_skipped = future.result()
-                uploaded += batch_uploaded
-                skipped += batch_skipped
-                if progress_callback:
-                    msg = f"Uploaded {uploaded}/{total} PDFs"
-                    if skipped:
-                        msg += f" ({skipped} skipped — too large)"
-                    progress_callback(msg)
-
-    def _start_processing(self) -> dict:
-        """Trigger server-side processing."""
-        resp = requests.post(
-            f"{self.server_url}/api/v1/upload-library/process",
-            headers=self._headers(),
-            timeout=30,
-        )
-        if resp.status_code != 200:
-            raise CloudProcessingError(
-                f"Failed to start processing: {resp.status_code} {resp.text[:200]}"
-            )
-        return resp.json()
-
-    def _wait_for_completion(self, progress_callback=None) -> None:
-        """Poll upload-library/status until processing completes or fails."""
-        deadline = time.time() + MAX_WAIT_SECONDS
-        start_time = time.monotonic()
-        last_message = ""
-
-        while time.time() < deadline:
-            try:
-                resp = requests.get(
-                    f"{self.server_url}/api/v1/upload-library/status",
-                    headers=self._headers(),
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                status = resp.json()
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                # Server may be busy with CPU-intensive embedding; retry
-                time.sleep(POLL_INTERVAL)
-                continue
-
-            lib_status = status.get("library_status", "unknown")
-            job_status = status.get("job_status")
-
-            if lib_status == "ready":
-                if progress_callback:
-                    num_papers = status.get("num_papers", 0)
-                    num_chunks = status.get("num_chunks", 0)
-                    fulltext_papers = status.get("grobid_fulltext_papers", 0)
-                    fulltext_chunks = status.get("grobid_fulltext_chunks", 0)
-                    abstract_papers = status.get("abstract_only_papers", 0)
-                    msg = f"Done! {num_papers} papers, {num_chunks} chunks indexed"
-                    if fulltext_papers or abstract_papers:
-                        abstract_chunks = num_chunks - fulltext_chunks
-                        msg += (
-                            f" ({fulltext_chunks} from full-text, {abstract_chunks} from abstracts)"
-                        )
-                    progress_callback(msg)
-                return
-
-            if lib_status == "error" or job_status == "failed":
-                error = status.get("error", "Unknown error")
-                raise CloudProcessingError(f"Server processing failed: {error}")
-
-            # Report progress
-            if progress_callback:
-                stage = status.get("stage", "")
-                current = status.get("current", 0)
-                total = status.get("total", 0)
-                elapsed = time.monotonic() - start_time
-                elapsed_str = f"{int(elapsed // 60)}:{int(elapsed % 60):02d}"
-
-                if stage and total:
-                    msg = f"  {stage}: {current}/{total} [{elapsed_str} elapsed]"
-                elif stage:
-                    msg = f"  {stage}... [{elapsed_str} elapsed]"
-                else:
-                    msg = f"  Processing... [{elapsed_str} elapsed]"
-
-                if msg != last_message:
-                    progress_callback(msg)
-                    last_message = msg
-
-            time.sleep(POLL_INTERVAL)
-
-        raise CloudProcessingError(f"Processing timed out after {MAX_WAIT_SECONDS // 60} minutes")
-
-    def get_diagnostics(self) -> dict:
-        """Fetch library diagnostics from the server."""
-        resp = requests.get(
-            f"{self.server_url}/api/v1/upload-library/diagnostics",
-            headers=self._headers(),
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
+# --- Re-exports for backward compatibility ---
+from incite.corpus.cloud_upload import WebUploadClient  # noqa: F401, E402

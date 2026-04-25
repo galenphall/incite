@@ -105,9 +105,22 @@ data/analysis/
 
 # Saved HTML pages
 editor-plugins/chrome-incite-v2/html/
+editor-plugins/chrome-incite/html/
+
+# Chrome extension build artifacts
+editor-plugins/chrome-incite/dist/
+editor-plugins/chrome-incite/*.zip
+editor-plugins/chrome-incite/cloud/
+editor-plugins/chrome-incite-test/dist/
 
 # Google Apps Script
 .clasp.json
+
+# Funding applications (local only)
+fundings/
+
+# Tool runtime state
+.superpowers/
 
 # Jupyter
 .ipynb_checkpoints/
