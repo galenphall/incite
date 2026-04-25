@@ -2,6 +2,20 @@
 
 This module provides retrievers that search at the chunk/paragraph level
 and aggregate results to paper-level recommendations.
+
+Key classes:
+    ParagraphRetriever: Neural-only paragraph search with configurable score aggregation
+    HybridParagraphRetriever: RRF fusion of ParagraphRetriever + BM25Retriever
+
+Aggregation strategies (ParagraphRetriever):
+    max (default): best chunk score per paper
+    mean / sum / weighted_max / top_k_mean / coverage / log_normalized: alternatives
+
+Related modules:
+    embeddings/chunk_store.py — ChunkStore vector index searched by ParagraphRetriever
+    retrieval/bm25.py — BM25Retriever used by HybridParagraphRetriever
+    retrieval/hybrid.py — rrf_fuse/rrf_sort utilities shared here
+    retrieval/factory.py — create_paragraph_retriever() factory entry point
 """
 
 import math

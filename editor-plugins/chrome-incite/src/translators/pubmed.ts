@@ -1,0 +1,69 @@
+import type { Translator, PaperMetadata, DetectionResult } from "./types";
+import { extractStructuredText } from "./generic";
+import { getMeta, getAllMeta, extractYear } from "./utils";
+
+export const pubmedTranslator: Translator = {
+  name: "pubmed",
+  urlPatterns: [/pubmed\.ncbi\.nlm\.nih\.gov\/\d/],
+
+  detect(doc: Document): DetectionResult | null {
+    const title = getMeta(doc, "citation_title");
+    return title ? { type: "single" } : null;
+  },
+
+  extractSingle(doc: Document): PaperMetadata | null {
+    const title = getMeta(doc, "citation_title");
+    if (!title) return null;
+
+    const authors = getAllMeta(doc, "citation_author");
+    const doi = getMeta(doc, "citation_doi") ?? undefined;
+    const journal = getMeta(doc, "citation_journal_title") ?? undefined;
+    const year = extractYear(getMeta(doc, "citation_date", "citation_publication_date"));
+    const pdf_url = getMeta(doc, "citation_pdf_url") ?? undefined;
+
+    // Extract PMID from URL pattern /pubmed.ncbi.nlm.nih.gov/12345678/
+    let pmid = getMeta(doc, "citation_pmid") ?? undefined;
+    if (!pmid) {
+      const pmidMatch = doc.location.href.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/);
+      if (pmidMatch) pmid = pmidMatch[1];
+    }
+
+    // PubMed abstract is in the page content
+    let abstract: string | undefined;
+    const abstractDiv = doc.querySelector("#abstract, .abstract-content");
+    if (abstractDiv) {
+      abstract = abstractDiv.textContent?.trim();
+    }
+
+    const volume = getMeta(doc, "citation_volume") ?? undefined;
+    const issue = getMeta(doc, "citation_issue") ?? undefined;
+    const firstPage = getMeta(doc, "citation_firstpage");
+    const lastPage = getMeta(doc, "citation_lastpage");
+    const pages = firstPage ? (lastPage ? `${firstPage}-${lastPage}` : firstPage) : undefined;
+    const publisher = getMeta(doc, "citation_publisher") ?? undefined;
+
+    const { full_text, structured_text } = extractStructuredText(doc);
+
+    return {
+      title,
+      authors: authors.length ? authors : undefined,
+      year,
+      doi,
+      abstract,
+      journal,
+      url: doc.location.href,
+      pdf_url,
+      full_text: full_text ?? undefined,
+      structured_text: structured_text ?? undefined,
+      pmid,
+      volume,
+      issue,
+      pages,
+      publisher,
+    };
+  },
+
+  extractMultiple(_doc: Document): PaperMetadata[] {
+    return [];
+  },
+};
